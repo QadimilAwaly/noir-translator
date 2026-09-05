@@ -285,7 +285,7 @@ function ensurePromptTemplateFile(): void {
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'X-Title': 'Novel Translator Pro',
+      'X-Title': 'Noir Translator',
     };
 
     const body: any = {
@@ -1863,9 +1863,9 @@ HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(`[Novel Translator Server] Listening on http://${HOST}:${PORT}`);
+    console.log(`[Noir Translator Server] Listening on http://${HOST}:${PORT}`);
     if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
-      console.log(`[Novel Translator Server] Network address: http://${HOST}:${PORT}`);
+      console.log(`[Noir Translator Server] Network address: http://${HOST}:${PORT}`);
     }
   });
 }

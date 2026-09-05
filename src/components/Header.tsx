@@ -60,11 +60,11 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        <img src="/icon.png" alt="Novel Translator Pro" className="w-6 h-6" />
+        <img src="/icon.png" alt="Noir Translator" className="w-6 h-6" />
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-sm font-bold tracking-widest text-indigo-400 uppercase font-sans">
-              Novel Translator Pro
+              Noir Translator
             </h1>
             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               Offline-First

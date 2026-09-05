@@ -1,80 +1,100 @@
 <div align="center">
 
-# Novel Translator Pro
+# Noir Translator
+
+**High-Performance Offline-First AI Novel Translator**  
+*The translation companion engineered for seamless synergy with Noir Reader.*
 
 </div>
 
-Penerjemah novel AI kontekstual dengan alur memori otomatis, manajemen glosarium dinamis, dan ekspor struktur folder fisik.
+---
 
-## Run Locally
+## 📖 Tentang Noir Translator
 
-**Prerequisites:** Node.js (runtime diuji dengan Bun)
+**Noir Translator** adalah sistem penerjemah novel AI berbasis web *full-stack* yang dirancang khusus untuk kenyamanan penerjemahan literatur bertahap, retensi glosarium kontekstual dinamis, dan efisiensi daya tinggi pada perangkat bergerak (khususnya Android Termux).
 
-1. Install dependencies:
-   `npm install`
-2. Salin `.env.example` menjadi `.env.local`, lalu set `GEMINI_API_KEY` (atau `OPENROUTER_API_KEY`)
-3. Jalankan app:
-   `npm run dev`
+### ✨ Fitur Utama
+- **AI Translation Engine:** Dukungan model AI terdepan (Google Gemini & OpenRouter) dengan pemeliharaan nuansa sastra (*prose flow*) dan konsistensi istilah.
+- **Dynamic Context & Glossary:** Ekstraksi otomatis istilah kunci, nama tokoh, dan lore per novel untuk mencegah inkonsistensi terjemahan antar-bab.
+- **Granular Storage Engine:** Penyimpanan modular per bab berbasis Markdown (`.md`) dan indeks JSON yang hemat I/O.
+- **Termux & Battery Optimized:** Dilengkapi *HTTP keep-alive dispatcher*, *lazy rate-limit pruning*, dan *focus refetch throttling* untuk menghemat daya baterai dan radio modem.
+- **Format Export Terstandar:** Ekspor langsung ke struktur folder Markdown atau file `.zip` yang kompatibel dan siap dibaca di **Noir Reader**.
 
-## Menjalankan di Android (Termux)
+---
 
-Aplikasi ini dapat dijalankan langsung di Android menggunakan **Termux**. Ikuti panduan langkah demi langkah berikut:
+## 🚀 Menjalankan Secara Lokal
+
+**Prasyarat:** Node.js (v18+) atau Bun
+
+1. **Kloning repositori:**
+   ```bash
+   git clone https://github.com/QadimilAwaly/noir-translator.git
+   cd noir-translator
+   ```
+2. **Instal dependensi:**
+   ```bash
+   npm install
+   ```
+3. **Konfigurasi Environment:**
+   Salin `.env.example` ke `.env.local` dan isi API key Anda:
+   ```bash
+   cp .env.example .env.local
+   # Masukkan GEMINI_API_KEY atau OPENROUTER_API_KEY
+   ```
+4. **Jalankan aplikasi (Development):**
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## 📱 Panduan Khusus Android (Termux)
+
+Noir Translator dioptimalkan secara mendalam untuk berjalan di lingkungan Termux Android tanpa membebani sistem.
 
 ### 1. Persiapan Termux
-Buka aplikasi Termux, lalu instal paket yang diperlukan:
 ```bash
-# Update repository Termux
 pkg update && pkg upgrade -y
-
-# Instal Node.js, git, dan esbuild native
 pkg install nodejs-lts git esbuild -y
-
-# Mencegah Android mem-pause proses saat Termux di background
 termux-wake-lock
 ```
 
-### 2. Atur Environment Binary esbuild
-Agar `esbuild` dapat berjalan di lingkungan Android Bionic libc:
+### 2. Atur Binary esbuild
 ```bash
 export ESBUILD_BINARY_PATH=$(which esbuild)
 ```
-*(Opsional: tambahkan perintah di atas ke `~/.bashrc` agar otomatis aktif setiap membuka Termux)*
+*(Tambahkan baris di atas ke `~/.bashrc` agar otomatis aktif).*
 
-### 3. Setup Project & Dependencies
-```bash
-cd aplikasi-translator-novel
-npm install
-cp .env.example .env.local
-# Edit .env.local dan isi API Key Anda (misal: nano .env.local)
-```
-
-### 4. Menjalankan Server
-> **Rekomendasi Terbaik untuk Termux:** Gunakan **Mode Production** (`npm run build && npm start`). Mode ini hanya memakan ~35MB RAM (dibandingkan ~400MB pada dev mode) dan bebas dari crash Android Low Memory Killer (LMK).
+### 3. Build & Jalankan Mode Production
+> **Rekomendasi:** Mode Production hanya mengonsumsi **~35MB RAM** (dibandingkan ~400MB pada dev mode) dan sangat tahan terhadap pembunuhan proses oleh Android Low Memory Killer (LMK).
 
 ```bash
-# Build aplikasi sekali:
+# Build aplikasi:
 npm run build
 
 # Jalankan server:
 npm start
 ```
 
-### 5. Membuka di Browser
-- Buka browser di HP Anda (Chrome/Kiwi/Firefox), lalu akses: **`http://localhost:3131`**
-- Jika ingin diakses dari perangkat lain (laptop/tablet di Wi-Fi yang sama), jalankan dengan:
-  ```bash
-  HOST=0.0.0.0 npm start
-  ```
-  Lalu buka `http://<IP-HP-ANDA>:3131` dari browser perangkat lain.
+Buka browser Anda dan akses: `http://localhost:3131`  
+Untuk akses jaringan lokal (Wi-Fi): `HOST=0.0.0.0 npm start` lalu buka `http://<IP-HP>:3131`.
 
-### Catatan Khusus Android / Termux:
-- **Penyimpanan Novel / Ekspor**: Karena browser mobile tidak mendukung File System Access API (`showDirectoryPicker`), gunakan tombol **"Ekspor ZIP"** di aplikasi. File `.zip` akan langsung masuk ke folder *Download* ponsel dan siap dibuka dengan aplikasi pembaca novel (Moon+ Reader, dll).
-- **Pengaturan Baterai**: Pastikan aplikasi Termux diset ke *Baterai: Tidak Dibatasi (Unrestricted)* di pengaturan sistem Android agar server tidak dimatikan saat layar mati.
+---
 
-## Fitur Utama
+## 🧪 Testing & Quality Gates
 
-- Penerjemahan bab per bab dengan AI (Gemini / OpenRouter)
-- Glosarium dinamis per novel
-- Reference context (sinopsis, gaya bahasa, lore)
-- Ekspor / re-ekstrak novel ke folder fisik lokal
-- Mode offline-first (client-side storage fallback)
+Suit pengujian mandiri menggunakan Bun:
+```bash
+# Menjalankan seluruh test suite
+bun run test:all
+
+# Pengujian spesifik
+bun run test:security
+bun run test:client
+bun run test:unit
+```
+
+---
+
+## 📄 Lisensi
+Didistribusikan di bawah lisensi MIT. Dikembangkan bersama ekosistem **Noir Reader**.

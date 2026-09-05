@@ -1,6 +1,6 @@
 {
-  "name": "Novel Translator Pro",
-  "description": "Penerjemah novel AI kontekstual dengan alur memori otomatis, manajemen glosarium dinamis, dan ekspor struktur folder fisik.",
+  "name": "Noir Translator",
+  "description": "Penerjemah novel AI kontekstual berdaya tinggi dengan alur memori otomatis, manajemen glosarium dinamis, dan ekspor struktur folder fisik.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
