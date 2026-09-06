@@ -46,7 +46,7 @@
       --surface: #1e1c17;
       --surface-2: #27241e;
       --surface-3: #332f27;
-      --surface-glass: rgba(30, 28, 23, 0.88);
+      --surface-glass: rgba(26, 24, 20, 0.97);
 
       --fg: #ece7dc;
       --fg-soft: #b0a797;
@@ -83,7 +83,7 @@
       --surface: #fdfbf7;
       --surface-2: #f2ede3;
       --surface-3: #e6dfd1;
-      --surface-glass: rgba(253, 251, 247, 0.88);
+      --surface-glass: rgba(253, 251, 247, 0.97);
 
       --fg: #221f1b;
       --fg-soft: #5e574d;
@@ -120,7 +120,7 @@
       --surface: #f7f1e4;
       --surface-2: #eae0cb;
       --surface-3: #ddd1b9;
-      --surface-glass: rgba(247, 241, 228, 0.90);
+      --surface-glass: rgba(247, 241, 228, 0.97);
 
       --fg: #322619;
       --fg-soft: #67533c;
@@ -157,7 +157,7 @@
       --surface: #161b27;
       --surface-2: #1e2434;
       --surface-3: #272f44;
-      --surface-glass: rgba(22, 27, 39, 0.90);
+      --surface-glass: rgba(18, 22, 32, 0.97);
 
       --fg: #e6ebf5;
       --fg-soft: #9aa5be;
@@ -236,6 +236,10 @@
       color: inherit;
     }
 
+    section, .workbench-card, [id] {
+      scroll-margin-top: 88px;
+    }
+
     .container {
       width: 100%;
       max-width: var(--container-max);
@@ -252,9 +256,7 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      background: var(--surface-glass);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
       transition: background-color var(--duration-normal) var(--ease-out), border-color var(--duration-normal) var(--ease-out);
     }
