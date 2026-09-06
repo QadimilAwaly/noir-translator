@@ -1,7 +1,14 @@
 {
   "name": "noir-translator",
+  "version": "1.0.0",
+  "description": "High-Performance Offline-First AI Novel Translator (Companion for Noir Reader)",
+  "author": "Qadimil Awaly",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/QadimilAwaly/noir-translator.git"
+  },
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
