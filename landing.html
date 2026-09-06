@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" data-theme="obsidian-dark">
+<html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -37,90 +37,13 @@
       --radius-full: 9999px;
 
       --container-max: 1180px;
-    }
 
-    /* --- Theme 1: Obsidian Noir (Default Warm Dark Pitch) --- */
-    [data-theme="obsidian-dark"] {
-      --bg: #141310;
-      --bg-alt: #1a1814;
-      --surface: #1e1c17;
-      --surface-2: #27241e;
-      --surface-3: #332f27;
-      --surface-glass: rgba(26, 24, 20, 0.97);
-
-      --fg: #ece7dc;
-      --fg-soft: #b0a797;
-      --fg-muted: #7e7566;
-
-      --border: #322e25;
-      --border-strong: #4a4437;
-
-      --accent: #7fae9b;
-      --accent-hover: #96c4b2;
-      --accent-soft: rgba(127, 174, 155, 0.14);
-      --accent-fg: #101914;
-
-      --amber-accent: #df9e58;
-      --amber-soft: rgba(223, 158, 88, 0.14);
-
-      --indigo-accent: #93a4ff;
-      --indigo-soft: rgba(147, 164, 255, 0.12);
-
-      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
-      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55);
-      --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.65);
-
-      --badge-bg: #27241e;
-      --badge-fg: #d9d2c3;
-      --code-bg: #191713;
-      --glow-hero: radial-gradient(circle at 50% -10%, rgba(127, 174, 155, 0.10), transparent 65%);
-    }
-
-    /* --- Theme 2: Soft Light (Warm Parchment Paper) --- */
-    [data-theme="soft-light"] {
-      --bg: #f6f3eb;
-      --bg-alt: #ede8dc;
-      --surface: #fdfbf7;
-      --surface-2: #f2ede3;
-      --surface-3: #e6dfd1;
-      --surface-glass: rgba(253, 251, 247, 0.97);
-
-      --fg: #221f1b;
-      --fg-soft: #5e574d;
-      --fg-muted: #8b8273;
-
-      --border: #ded7c9;
-      --border-strong: #c8bfad;
-
-      --accent: #2c5847;
-      --accent-hover: #224538;
-      --accent-soft: rgba(44, 88, 71, 0.10);
-      --accent-fg: #ffffff;
-
-      --amber-accent: #8e541b;
-      --amber-soft: rgba(142, 84, 27, 0.10);
-
-      --indigo-accent: #3e50c4;
-      --indigo-soft: rgba(62, 80, 196, 0.08);
-
-      --shadow-sm: 0 1px 3px rgba(34, 31, 27, 0.06);
-      --shadow-md: 0 6px 20px rgba(34, 31, 27, 0.08);
-      --shadow-lg: 0 16px 40px rgba(34, 31, 27, 0.12);
-
-      --badge-bg: #eae3d4;
-      --badge-fg: #3d372e;
-      --code-bg: #eae4d6;
-      --glow-hero: radial-gradient(circle at 50% -10%, rgba(44, 88, 71, 0.06), transparent 65%);
-    }
-
-    /* --- Theme 3: Amber Sepia (Vintage Library Edition) --- */
-    [data-theme="amber-sepia"] {
+      /* Amber Sepia Palette (Vintage Literary Edition) */
       --bg: #eee5d3;
       --bg-alt: #e4dac5;
       --surface: #f7f1e4;
       --surface-2: #eae0cb;
       --surface-3: #ddd1b9;
-      --surface-glass: rgba(247, 241, 228, 0.97);
 
       --fg: #322619;
       --fg-soft: #67533c;
@@ -148,43 +71,6 @@
       --badge-fg: #4d3c2a;
       --code-bg: #ded0b7;
       --glow-hero: radial-gradient(circle at 50% -10%, rgba(139, 74, 36, 0.08), transparent 65%);
-    }
-
-    /* --- Theme 4: Midnight Atelier (Deep Studio Indigo & Teal) --- */
-    [data-theme="midnight-atelier"] {
-      --bg: #0c0e14;
-      --bg-alt: #121620;
-      --surface: #161b27;
-      --surface-2: #1e2434;
-      --surface-3: #272f44;
-      --surface-glass: rgba(18, 22, 32, 0.97);
-
-      --fg: #e6ebf5;
-      --fg-soft: #9aa5be;
-      --fg-muted: #6b7794;
-
-      --border: #242c40;
-      --border-strong: #364260;
-
-      --accent: #5eead4;
-      --accent-hover: #7ef1df;
-      --accent-soft: rgba(94, 234, 212, 0.14);
-      --accent-fg: #0b1e1b;
-
-      --amber-accent: #f59e0b;
-      --amber-soft: rgba(245, 158, 11, 0.14);
-
-      --indigo-accent: #818cf8;
-      --indigo-soft: rgba(129, 140, 248, 0.14);
-
-      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.55);
-      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.65);
-      --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.75);
-
-      --badge-bg: #1e2536;
-      --badge-fg: #cbd5e1;
-      --code-bg: #10141f;
-      --glow-hero: radial-gradient(circle at 50% -10%, rgba(94, 234, 212, 0.09), transparent 65%);
     }
 
     /* ==========================================================================
@@ -345,45 +231,6 @@
       display: flex;
       align-items: center;
       gap: 10px;
-    }
-
-    /* Theme Picker Dropdown Pill */
-    .theme-picker {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-full);
-      padding: 4px;
-    }
-
-    .theme-btn {
-      background: transparent;
-      border: none;
-      padding: 5px 9px;
-      border-radius: var(--radius-full);
-      font-size: 0.72rem;
-      font-family: var(--font-mono);
-      font-weight: 500;
-      color: var(--fg-muted);
-      cursor: pointer;
-      transition: all var(--duration-fast) var(--ease-out);
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .theme-btn:hover {
-      color: var(--fg);
-    }
-
-    .theme-btn.active {
-      background: var(--surface);
-      color: var(--fg);
-      box-shadow: var(--shadow-sm);
-      border: 1px solid var(--border-strong);
-      font-weight: 600;
     }
 
     .btn-github-nav {
@@ -1268,14 +1115,6 @@
       </ul>
 
       <div class="nav-actions">
-        <!-- Multi-Theme Toggler Pill -->
-        <div class="theme-picker" role="radiogroup" aria-label="Pilih Tema">
-          <button class="theme-btn active" data-set-theme="obsidian-dark" title="Obsidian Noir">Dark</button>
-          <button class="theme-btn" data-set-theme="soft-light" title="Soft Light Parchment">Light</button>
-          <button class="theme-btn" data-set-theme="amber-sepia" title="Amber Sepia">Sepia</button>
-          <button class="theme-btn" data-set-theme="midnight-atelier" title="Midnight Atelier">Midnight</button>
-        </div>
-
         <a href="https://github.com/QadimilAwaly/noir-translator" target="_blank" rel="noopener noreferrer" class="btn-github-nav">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -1759,35 +1598,7 @@
        INTERACTION SCRIPTS
        ========================================================================== -->
   <script>
-    // 1. Multi-Theme Switching Logic
-    const themeButtons = document.querySelectorAll('[data-set-theme]');
-    const rootHtml = document.documentElement;
-
-    function applyTheme(themeName) {
-      rootHtml.setAttribute('data-theme', themeName);
-      localStorage.setItem('noir_translator_theme', themeName);
-
-      themeButtons.forEach(btn => {
-        if (btn.getAttribute('data-set-theme') === themeName) {
-          btn.classList.add('active');
-        } else {
-          btn.classList.remove('active');
-        }
-      });
-    }
-
-    // Load saved theme or fallback to obsidian-dark
-    const savedTheme = localStorage.getItem('noir_translator_theme') || 'obsidian-dark';
-    applyTheme(savedTheme);
-
-    themeButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetTheme = btn.getAttribute('data-set-theme');
-        applyTheme(targetTheme);
-      });
-    });
-
-    // 2. Interactive Sample Switcher in Workbench
+    // 1. Interactive Sample Switcher in Workbench
     const samples = {
       cultivation: {
         langTag: 'Chinese (Simplified)',
