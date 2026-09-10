@@ -278,26 +278,35 @@ export async function fetchServerStorage(): Promise<LibraryStorageData | null> {
   return null;
 }
 
-export function syncServerStorage(customData?: Partial<LibraryStorageData>) {
+export function syncServerStorage(customData?: Partial<LibraryStorageData>, partialOnly: boolean = false) {
   if (syncTimeout) {
     clearTimeout(syncTimeout);
   }
   syncTimeout = setTimeout(async () => {
     try {
-      const novels = customData?.novels || getStoredNovels();
-      const chapters = customData?.chapters || getStoredChapters();
-      const references = customData?.references || getAllStoredReferences();
-      const glossaries = customData?.glossaries || getAllStoredGlossaries();
+      let payload: Record<string, unknown>;
+
+      if (partialOnly) {
+        // Partial sync: only send the fields explicitly provided
+        // Server will only process fields that are present in the payload
+        payload = {};
+        if (customData?.novels) payload.novels = customData.novels;
+        if (customData?.chapters) payload.chapters = customData.chapters;
+        if (customData?.references) payload.references = customData.references;
+        if (customData?.glossaries) payload.glossaries = customData.glossaries;
+      } else {
+        // Full sync: send everything (novels, chapters, refs, glossaries)
+        const novels = customData?.novels || getStoredNovels();
+        const chapters = customData?.chapters || getStoredChapters();
+        const references = customData?.references || getAllStoredReferences();
+        const glossaries = customData?.glossaries || getAllStoredGlossaries();
+        payload = { novels, chapters, references, glossaries };
+      }
 
       const res = await fetch('/api/storage/sync', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          novels,
-          chapters,
-          references,
-          glossaries,
-        }),
+        body: JSON.stringify(payload),
       });
       if (res.ok && typeof localStorage !== 'undefined') {
         const json = await res.json().catch(() => null);
@@ -326,7 +335,9 @@ export function getStoredNovels(): Novel[] {
 
 export function saveStoredNovels(novels: Novel[]) {
   localStorage.setItem(NOVELS_KEY, JSON.stringify(novels));
-  syncServerStorage({ novels });
+  // Only sync the novels array — do NOT send chapters/refs/glossaries
+  // to prevent the server from interpreting missing data as deletions
+  syncServerStorage({ novels }, true);
 }
 export function deleteStoredNovel(novelId: string): Novel[] {
   const currentNovels = getStoredNovels();
