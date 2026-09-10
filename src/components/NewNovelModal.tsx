@@ -31,7 +31,7 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
     e.preventDefault();
     if (!judul.trim()) return;
 
-    const cleanFolder = folderPath || `/Novel_Library/${judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_')}`;
+    const cleanFolder = folderPath || `Novel_Library/${judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_')}`;
 
     onCreateNovel({
       judul: judul.trim(),
@@ -136,7 +136,7 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
               </button>
             </div>
             <p className="font-mono text-gray-300 truncate">
-              {folderPath || `/Novel_Library/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
+              {folderPath || `Novel_Library/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
             </p>
           </div>
 

@@ -633,9 +633,27 @@ function ensurePromptTemplateFile(): void {
   const resolveNovelFolderOnDisk = (libraryBase: string, novel: { id: string; judul: string; folder_path?: string }): string => {
     // 1. If novel.folder_path points to an existing directory inside libraryBase, use it
     if (novel.folder_path) {
-      const directPath = resolveSafePath(novel.folder_path, libraryBase);
+      // Normalize legacy leading-slash relative paths (e.g. '/Novel_Library/Title' → 'Novel_Library/Title')
+      // These are client-generated paths that look absolute but are meant relative to project root
+      let normalizedPath = novel.folder_path;
+      const libraryDirName = path.basename(libraryBase);
+      const leadingPattern = new RegExp(`^/${libraryDirName}/`);
+      if (leadingPattern.test(normalizedPath)) {
+        normalizedPath = normalizedPath.slice(1); // Strip leading slash to make it relative
+      }
+
+      const directPath = resolveSafePath(normalizedPath, libraryBase);
       if (directPath && fs.existsSync(directPath)) {
         return directPath;
+      }
+
+      // Also try resolving against project CWD for relative paths like 'Novel_Library/Title'
+      if (!path.isAbsolute(normalizedPath)) {
+        const cwdResolved = path.resolve(process.cwd(), normalizedPath);
+        const rel = path.relative(libraryBase, cwdResolved);
+        if ((rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) && fs.existsSync(cwdResolved)) {
+          return cwdResolved;
+        }
       }
     }
 
@@ -1131,6 +1149,14 @@ function ensurePromptTemplateFile(): void {
 
     try {
       for (const novel of updated.novels) {
+        // Normalize legacy leading-slash relative folder_path (e.g. '/Novel_Library/X' → resolved absolute)
+        if (novel.folder_path) {
+          const libraryDirName = path.basename(libraryBase);
+          const leadingPattern = new RegExp(`^/${libraryDirName}/`);
+          if (leadingPattern.test(novel.folder_path)) {
+            novel.folder_path = path.resolve(process.cwd(), novel.folder_path.slice(1));
+          }
+        }
         const novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
         if (!fs.existsSync(novelFolder)) {
           await fs.promises.mkdir(novelFolder, { recursive: true });
