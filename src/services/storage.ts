@@ -402,7 +402,7 @@ export function getStoredChapters(novelId?: string): Chapter[] {
 
 export function saveStoredChapters(chapters: Chapter[]) {
   localStorage.setItem(CHAPTERS_KEY, JSON.stringify(chapters));
-  syncServerStorage({ chapters });
+  syncServerStorage({ chapters }, true);
 }
 export function deleteStoredChapter(chapterId: string, novelId?: string): Chapter[] {
   const allChapters = getStoredChapters();
@@ -444,17 +444,17 @@ export function saveStoredReferences(refs: ReferenceItem[], novelId?: string) {
     const all = getAllStoredReferences().filter((r) => r.novel_id !== targetId);
     const merged = [...all, ...refs];
     localStorage.setItem(REFERENCES_KEY, JSON.stringify(merged));
-    syncServerStorage({ references: merged });
+    syncServerStorage({ references: merged }, true);
   } else {
     localStorage.setItem(REFERENCES_KEY, JSON.stringify(refs));
-    syncServerStorage({ references: refs });
+    syncServerStorage({ references: refs }, true);
   }
 }
 export function deleteStoredReference(referenceId: string, novelId?: string): ReferenceItem[] {
   const allRefs = getAllStoredReferences();
   const updatedAll = allRefs.filter((r) => r.id !== referenceId);
   localStorage.setItem(REFERENCES_KEY, JSON.stringify(updatedAll));
-  syncServerStorage({ references: updatedAll });
+  syncServerStorage({ references: updatedAll }, true);
 
   if (novelId) {
     return updatedAll.filter((r) => r.novel_id === novelId);
@@ -484,17 +484,17 @@ export function saveStoredGlossaries(gloss: GlossaryItem[], novelId?: string) {
     const all = getAllStoredGlossaries().filter((g) => g.novel_id !== targetId);
     const merged = [...all, ...gloss];
     localStorage.setItem(GLOSSARIES_KEY, JSON.stringify(merged));
-    syncServerStorage({ glossaries: merged });
+    syncServerStorage({ glossaries: merged }, true);
   } else {
     localStorage.setItem(GLOSSARIES_KEY, JSON.stringify(gloss));
-    syncServerStorage({ glossaries: gloss });
+    syncServerStorage({ glossaries: gloss }, true);
   }
 }
 export function deleteStoredGlossary(glossaryId: string, novelId?: string): GlossaryItem[] {
   const allGloss = getAllStoredGlossaries();
   const updatedAll = allGloss.filter((g) => g.id !== glossaryId);
   localStorage.setItem(GLOSSARIES_KEY, JSON.stringify(updatedAll));
-  syncServerStorage({ glossaries: updatedAll });
+  syncServerStorage({ glossaries: updatedAll }, true);
 
   // Also call delete endpoint
   fetch('/api/storage/delete-glossary', {
