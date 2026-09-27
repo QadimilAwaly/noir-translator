@@ -205,9 +205,10 @@ let cachedPromptMtime = 0;
 // Helper: Load System Instruction Template from prompt/translation.md
 function getTranslationSystemInstructionTemplate(): string {
   const promptPaths = [
+    process.env.PROMPT_TEMPLATE_PATH,
     path.join(process.cwd(), 'prompt', 'translation.md'),
     path.join(process.cwd(), 'prompts', 'translation.md'),
-  ];
+  ].filter(Boolean) as string[];
 
   for (const p of promptPaths) {
     if (fs.existsSync(p)) {
@@ -253,8 +254,9 @@ function renderPromptTemplate(template: string, vars: Record<string, string>): s
   });
 }
 function ensurePromptTemplateFile(): void {
-  const promptDir = path.join(process.cwd(), 'prompt');
-  const promptFile = path.join(promptDir, 'translation.md');
+  const customPath = process.env.PROMPT_TEMPLATE_PATH;
+  const promptDir = customPath ? path.dirname(customPath) : path.join(process.cwd(), 'prompt');
+  const promptFile = customPath || path.join(promptDir, 'translation.md');
   if (!fs.existsSync(promptFile)) {
     try {
       if (!fs.existsSync(promptDir)) {
@@ -282,6 +284,18 @@ function ensurePromptTemplateFile(): void {
     prompt: string;
     jsonOutput?: boolean;
   }) => {
+    const config = readConfig();
+    const effectiveModel =
+      model ||
+      config.default_openrouter_model ||
+      process.env.DEFAULT_OPENROUTER_MODEL ||
+      'google/gemini-2.5-flash';
+    const openRouterUrl =
+      process.env.OPENROUTER_API_URL ||
+      (process.env.OPENROUTER_BASE_URL
+        ? `${process.env.OPENROUTER_BASE_URL.replace(/\/+$/, '')}/chat/completions`
+        : 'https://openrouter.ai/api/v1/chat/completions');
+
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -289,7 +303,7 @@ function ensurePromptTemplateFile(): void {
     };
 
     const body: any = {
-      model: model || 'google/gemini-2.5-flash',
+      model: effectiveModel,
       messages: [
         { role: 'system', content: systemInstruction },
         { role: 'user', content: prompt },
@@ -301,7 +315,7 @@ function ensurePromptTemplateFile(): void {
       body.response_format = { type: 'json_object' };
     }
 
-    const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetchWithTimeout(openRouterUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -397,11 +411,26 @@ function ensurePromptTemplateFile(): void {
     const ai = getGenAI(apiKeyOverride);
 
     // Build fallback list if primary model fails with 503
-    const modelsToTry = [model];
-    if (model === 'gemini-2.5-flash') {
-      modelsToTry.push('gemini-2.5-pro');
-    } else if (!modelsToTry.includes('gemini-2.5-flash')) {
-      modelsToTry.push('gemini-2.5-flash');
+    const config = readConfig();
+    const primaryModel =
+      model ||
+      config.default_model ||
+      process.env.DEFAULT_GEMINI_MODEL ||
+      process.env.DEFAULT_MODEL ||
+      'gemini-2.5-flash';
+    const fallbackModel =
+      config.gemini_fallback_model ||
+      process.env.GEMINI_FALLBACK_MODEL ||
+      (primaryModel === 'gemini-2.5-flash'
+        ? 'gemini-2.5-pro'
+        : primaryModel !== 'gemini-2.5-flash'
+        ? 'gemini-2.5-flash'
+        : '');
+
+    // Build fallback list if primary model fails with transient error
+    const modelsToTry = [primaryModel];
+    if (fallbackModel && !modelsToTry.includes(fallbackModel)) {
+      modelsToTry.push(fallbackModel);
     }
 
     let lastError: any = null;
@@ -560,14 +589,16 @@ function ensurePromptTemplateFile(): void {
   }
 
   // Helper: Read/Write App Config File (config.json)
-  const CONFIG_PATH = path.join(process.cwd(), 'config.json');
+  const CONFIG_PATH = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.json');
 
   const getDefaultConfig = () => ({
-    global_storage_path: path.join(process.cwd(), 'Novel_Library'),
-    default_provider: 'gemini',
-    default_model: 'gemini-2.5-flash',
-    gemini_api_key: '',
-    openrouter_api_key: '',
+    global_storage_path: process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || path.join(process.cwd(), 'Novel_Library'),
+    default_provider: process.env.DEFAULT_PROVIDER || 'gemini',
+    default_model: process.env.DEFAULT_MODEL || process.env.DEFAULT_GEMINI_MODEL || 'gemini-2.5-flash',
+    default_openrouter_model: process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash',
+    gemini_fallback_model: process.env.GEMINI_FALLBACK_MODEL || '',
+    gemini_api_key: process.env.GEMINI_API_KEY || '',
+    openrouter_api_key: process.env.OPENROUTER_API_KEY || '',
   });
 
   const readConfig = () => {
@@ -595,6 +626,8 @@ function ensurePromptTemplateFile(): void {
       global_storage_path: cfg.global_storage_path,
       default_provider: cfg.default_provider,
       default_model: cfg.default_model,
+      default_openrouter_model: cfg.default_openrouter_model || process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash',
+      gemini_fallback_model: cfg.gemini_fallback_model || process.env.GEMINI_FALLBACK_MODEL || '',
       has_gemini_api_key: Boolean(cfg.gemini_api_key),
       has_openrouter_api_key: Boolean(cfg.openrouter_api_key),
     };
@@ -603,16 +636,25 @@ function ensurePromptTemplateFile(): void {
   // Helper: Persistent Server-Backed Novel & Metadata Storage
   const getLibraryStorageDir = (): string => {
     const config = readConfig();
-    const rawPath = config.global_storage_path || path.join(process.cwd(), 'Novel_Library');
+    const rawPath = process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || config.global_storage_path || path.join(process.cwd(), 'Novel_Library');
     const resolved = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(process.cwd(), rawPath);
-    if (!fs.existsSync(resolved)) {
-      try {
+    try {
+      if (!fs.existsSync(resolved)) {
         fs.mkdirSync(resolved, { recursive: true });
-      } catch (err) {
-        console.error('Failed creating library directory:', err);
       }
+      return resolved;
+    } catch (err) {
+      console.warn(`[storage] Could not access configured path "${resolved}", falling back to local Novel_Library:`, err);
+      const fallbackDir = path.resolve(process.cwd(), 'Novel_Library');
+      if (!fs.existsSync(fallbackDir)) {
+        try {
+          fs.mkdirSync(fallbackDir, { recursive: true });
+        } catch {
+          // ignore
+        }
+      }
+      return fallbackDir;
     }
-    return resolved;
   };
 
   const getLibraryIndexFilePath = (): string => {
@@ -637,11 +679,11 @@ function ensurePromptTemplateFile(): void {
       // These are client-generated paths that look absolute but are meant relative to project root
       let normalizedPath = novel.folder_path;
       const libraryDirName = path.basename(libraryBase);
-      const leadingPattern = new RegExp(`^/${libraryDirName}/`);
+      const escapedDir = libraryDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const leadingPattern = new RegExp(`^/(?:${escapedDir}|Novel_Library)/`);
       if (leadingPattern.test(normalizedPath)) {
-        normalizedPath = normalizedPath.slice(1); // Strip leading slash to make it relative
+        normalizedPath = normalizedPath.replace(/^\/[^/]+\//, ''); // Strip leading directory segment to make relative
       }
-
       const directPath = resolveSafePath(normalizedPath, libraryBase);
       if (directPath && fs.existsSync(directPath)) {
         return directPath;
@@ -1152,9 +1194,10 @@ function ensurePromptTemplateFile(): void {
         // Normalize legacy leading-slash relative folder_path (e.g. '/Novel_Library/X' → resolved absolute)
         if (novel.folder_path) {
           const libraryDirName = path.basename(libraryBase);
-          const leadingPattern = new RegExp(`^/${libraryDirName}/`);
+          const escapedDir = libraryDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const leadingPattern = new RegExp(`^/(?:${escapedDir}|Novel_Library)/`);
           if (leadingPattern.test(novel.folder_path)) {
-            novel.folder_path = path.resolve(process.cwd(), novel.folder_path.slice(1));
+            novel.folder_path = path.resolve(libraryBase, novel.folder_path.replace(/^\/[^/]+\//, ''));
           }
         }
         const novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
@@ -1268,6 +1311,8 @@ function ensurePromptTemplateFile(): void {
       }
       if (typeof body.default_provider === 'string') updated.default_provider = body.default_provider;
       if (typeof body.default_model === 'string') updated.default_model = body.default_model;
+      if (typeof body.default_openrouter_model === 'string') updated.default_openrouter_model = body.default_openrouter_model;
+      if (typeof body.gemini_fallback_model === 'string') updated.gemini_fallback_model = body.gemini_fallback_model;
       if (body.gemini_api_key !== undefined) updated.gemini_api_key = String(body.gemini_api_key);
       if (body.openrouter_api_key !== undefined) updated.openrouter_api_key = String(body.openrouter_api_key);
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf-8');
@@ -1633,9 +1678,12 @@ function ensurePromptTemplateFile(): void {
       }
 
       const config = readConfig();
-      const provider = ai_config?.provider || config.default_provider || 'gemini';
-      let model = ai_config?.model || (provider === 'openrouter' ? 'google/gemini-2.5-flash' : 'gemini-2.5-flash');
-      model = sanitizeModelId(model) || (provider === 'openrouter' ? 'google/gemini-2.5-flash' : 'gemini-2.5-flash');
+      const provider = ai_config?.provider || config.default_provider || process.env.DEFAULT_PROVIDER || 'gemini';
+      const defaultProviderModel = provider === 'openrouter'
+        ? (config.default_openrouter_model || process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash')
+        : (config.default_model || process.env.DEFAULT_GEMINI_MODEL || process.env.DEFAULT_MODEL || 'gemini-2.5-flash');
+      let model = ai_config?.model || defaultProviderModel;
+      model = sanitizeModelId(model) || defaultProviderModel;
       // Jangan percaya API key dari client — resolve server-side dari config.json / env (audit #2)
       const apiKeyOverride = provider === 'openrouter' ? (config.openrouter_api_key || process.env.OPENROUTER_API_KEY) : (config.gemini_api_key || process.env.GEMINI_API_KEY);
 
@@ -1725,9 +1773,12 @@ function ensurePromptTemplateFile(): void {
       const targetLang = typeof bahasa_target === 'string' && bahasa_target.trim() ? bahasa_target.trim() : 'Bahasa Target';
 
       const config = readConfig();
-      const provider = ai_config?.provider || config.default_provider || 'gemini';
-      let model = ai_config?.model || (provider === 'openrouter' ? 'google/gemini-2.5-flash' : 'gemini-2.5-flash');
-      model = sanitizeModelId(model) || (provider === 'openrouter' ? 'google/gemini-2.5-flash' : 'gemini-2.5-flash');
+      const provider = ai_config?.provider || config.default_provider || process.env.DEFAULT_PROVIDER || 'gemini';
+      const defaultProviderModel = provider === 'openrouter'
+        ? (config.default_openrouter_model || process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash')
+        : (config.default_model || process.env.DEFAULT_GEMINI_MODEL || process.env.DEFAULT_MODEL || 'gemini-2.5-flash');
+      let model = ai_config?.model || defaultProviderModel;
+      model = sanitizeModelId(model) || defaultProviderModel;
       // API key resolve server-side (audit #2)
       const apiKeyOverride = provider === 'openrouter' ? (config.openrouter_api_key || process.env.OPENROUTER_API_KEY) : (config.gemini_api_key || process.env.GEMINI_API_KEY);
 
@@ -1881,7 +1932,7 @@ HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = process.env.DIST_PATH || (fs.existsSync(path.join(process.cwd(), 'dist')) ? path.join(process.cwd(), 'dist') : currentDirname);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

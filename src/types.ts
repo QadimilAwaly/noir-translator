@@ -96,6 +96,16 @@ export interface AIConfig {
   geminiApiKey?: string;
 }
 
+export interface ServerConfig {
+  global_storage_path: string;
+  default_provider: AIProvider;
+  default_model: string;
+  default_openrouter_model?: string;
+  gemini_fallback_model?: string;
+  has_gemini_api_key?: boolean;
+  has_openrouter_api_key?: boolean;
+}
+
 export interface TranslateRequest {
   teks_asli: string;
   bahasa_sumber: string;

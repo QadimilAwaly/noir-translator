@@ -6,6 +6,7 @@ import { requestFolderPicker } from '../services/fileSystemStorage';
 interface NewNovelModalProps {
   isOpen: boolean;
   onClose: () => void;
+  globalStoragePath?: string;
   onCreateNovel: (data: {
     judul: string;
     folder_path: string;
@@ -18,6 +19,7 @@ interface NewNovelModalProps {
 export const NewNovelModal: React.FC<NewNovelModalProps> = ({
   isOpen,
   onClose,
+  globalStoragePath = '',
   onCreateNovel,
 }) => {
   const [judul, setJudul] = useState('');
@@ -27,12 +29,15 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
   const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | undefined>(undefined);
   if (!isOpen) return null;
 
+  const libraryDir = globalStoragePath
+    ? globalStoragePath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Novel_Library'
+    : 'Novel_Library';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!judul.trim()) return;
 
-    const cleanFolder = folderPath || `Novel_Library/${judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_')}`;
-
+    const cleanFolder = folderPath || `${libraryDir}/${judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_')}`;
     onCreateNovel({
       judul: judul.trim(),
       folder_path: cleanFolder,
@@ -136,7 +141,7 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
               </button>
             </div>
             <p className="font-mono text-gray-300 truncate">
-              {folderPath || `Novel_Library/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
+              {folderPath || `${libraryDir}/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
             </p>
           </div>
 

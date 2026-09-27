@@ -7,12 +7,15 @@ interface ModelSettingsModalProps {
   onClose: () => void;
   aiConfig: AIConfig;
   globalStoragePath?: string;
+  defaultGeminiModel?: string;
+  defaultOpenrouterModel?: string;
   onSaveConfig: (newConfig: AIConfig, globalPath?: string) => void;
 }
 
 const GEMINI_PRESETS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Rekomendasi — Sangat Cepat & Akurat' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Kualitas Tinggi untuk Narasi Kompleks' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', desc: 'Generasi Baru — Ringan & Cepat' },
 ];
 
 const OPENROUTER_PRESETS = [
@@ -29,6 +32,8 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
   onClose,
   aiConfig,
   globalStoragePath = '',
+  defaultGeminiModel,
+  defaultOpenrouterModel,
   onSaveConfig,
 }) => {
   const [provider, setProvider] = useState<AIProvider>(aiConfig.provider);
@@ -38,12 +43,15 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
   const [storagePath, setStoragePath] = useState<string>(globalStoragePath);
   if (!isOpen) return null;
 
+  const fallbackGemini = defaultGeminiModel || 'gemini-2.5-flash';
+  const fallbackOpenrouter = defaultOpenrouterModel || 'google/gemini-2.5-flash';
+
   const handleProviderChange = (newProvider: AIProvider) => {
     setProvider(newProvider);
     if (newProvider === 'openrouter' && !model.includes('/')) {
-      setModel('google/gemini-2.5-flash');
+      setModel(fallbackOpenrouter);
     } else if (newProvider === 'gemini' && model.includes('/')) {
-      setModel('gemini-2.5-flash');
+      setModel(fallbackGemini);
     }
   };
 
@@ -52,7 +60,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
     onSaveConfig(
       {
         provider,
-        model: model.trim() || (provider === 'openrouter' ? 'google/gemini-2.5-flash' : 'gemini-2.5-flash'),
+        model: model.trim() || (provider === 'openrouter' ? fallbackOpenrouter : fallbackGemini),
         openrouterApiKey: openrouterKey.trim(),
         geminiApiKey: geminiKey.trim(),
       },
@@ -159,14 +167,14 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder={provider === 'openrouter' ? 'Contoh: anthropic/claude-3.5-sonnet atau deepseek/deepseek-chat' : 'Contoh: gemini-2.5-flash'}
+                placeholder={provider === 'openrouter' ? 'Contoh: anthropic/claude-3.5-sonnet atau deepseek/deepseek-chat' : `Contoh: ${fallbackGemini}`}
                 className="w-full p-2 bg-[#0F1113] border border-gray-800 rounded text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
                 required
               />
               <p className="text-[10px] text-gray-500">
                 {provider === 'openrouter'
                   ? 'Ketik ID model persis dari OpenRouter (contoh: "qwen/qwen-2.5-72b-instruct", "mistralai/mistral-large").'
-                  : 'Ketik ID model Gemini (contoh: "gemini-2.5-flash", "gemini-2.5-pro").'}
+                  : `Ketik ID model Gemini (contoh: "${fallbackGemini}", "gemini-2.5-pro", "gemini-3.5-flash-lite").`}
               </p>
             </div>
           </div>
@@ -182,7 +190,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                 type="text"
                 value={storagePath}
                 onChange={(e) => setStoragePath(e.target.value)}
-                placeholder="Contoh: E:/Novel_Library atau /Users/nama/Novels"
+                placeholder={globalStoragePath || "Contoh: Novel_Library atau E:/Novel_Library"}
                 className="w-full p-2 bg-[#16181D] border border-gray-800 rounded text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
               />
               <p className="text-[10px] text-gray-500">

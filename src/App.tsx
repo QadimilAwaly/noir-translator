@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Novel, Chapter, ReferenceItem, GlossaryItem, ChapterStatus, LanguageCode, AIConfig, GenderTag } from './types';
+import { Novel, Chapter, ReferenceItem, GlossaryItem, ChapterStatus, LanguageCode, AIConfig, ServerConfig, GenderTag } from './types';
 import {
   getStoredChapters,
   saveStoredChapters,
@@ -61,6 +61,7 @@ export default function App() {
 
   // Global App Config State (stored in config.json on server)
   const [globalStoragePath, setGlobalStoragePath] = useState<string>('');
+  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
     model: 'gemini-2.5-flash',
@@ -74,14 +75,21 @@ export default function App() {
       headers: authHeaders(),
     })
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: ServerConfig) => {
         if (data) {
+          setServerConfig(data);
           if (data.global_storage_path) setGlobalStoragePath(data.global_storage_path);
-          setAiConfig((prev) => ({
-            ...prev,
-            provider: data.default_provider || prev.provider,
-            model: data.default_model || prev.model,
-          }));
+          setAiConfig((prev) => {
+            const provider = data.default_provider || prev.provider;
+            const model = provider === 'openrouter'
+              ? (data.default_openrouter_model || prev.model)
+              : (data.default_model || prev.model);
+            return {
+              ...prev,
+              provider,
+              model: model || prev.model,
+            };
+          });
         }
       })
       .catch((err) => console.error('Failed fetching config.json:', err));
@@ -135,7 +143,8 @@ export default function App() {
       const body: Record<string, unknown> = {
         global_storage_path: newGlobalPath !== undefined ? newGlobalPath : globalStoragePath,
         default_provider: newConfig.provider,
-        default_model: newConfig.model,
+        default_model: newConfig.provider === 'gemini' ? newConfig.model : (serverConfig?.default_model || 'gemini-2.5-flash'),
+        default_openrouter_model: newConfig.provider === 'openrouter' ? newConfig.model : (serverConfig?.default_openrouter_model || 'google/gemini-2.5-flash'),
       };
       if (newConfig.geminiApiKey) body.gemini_api_key = newConfig.geminiApiKey;
       if (newConfig.openrouterApiKey) body.openrouter_api_key = newConfig.openrouterApiKey;
@@ -842,6 +851,7 @@ export default function App() {
       <NewNovelModal
         isOpen={isNewNovelModalOpen}
         onClose={() => setIsNewNovelModalOpen(false)}
+        globalStoragePath={globalStoragePath}
         onCreateNovel={handleCreateNovel}
       />
 
@@ -863,6 +873,7 @@ export default function App() {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         activeNovel={activeNovel}
+        globalStoragePath={globalStoragePath}
         onExportFolderZip={handleExportFolderZip}
       />
 
@@ -870,6 +881,9 @@ export default function App() {
         isOpen={isModelSettingsModalOpen}
         onClose={() => setIsModelSettingsModalOpen(false)}
         aiConfig={aiConfig}
+        globalStoragePath={globalStoragePath}
+        defaultGeminiModel={serverConfig?.default_model}
+        defaultOpenrouterModel={serverConfig?.default_openrouter_model}
         onSaveConfig={handleSaveAiConfig}
       />
     </div>

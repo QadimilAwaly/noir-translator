@@ -6,6 +6,7 @@ interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   activeNovel: Novel | null;
+  globalStoragePath?: string;
   onExportFolderZip: () => void;
 }
 
@@ -13,9 +14,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   activeNovel,
+  globalStoragePath = '',
   onExportFolderZip,
 }) => {
   if (!isOpen || !activeNovel) return null;
+
+  const libraryDir = globalStoragePath
+    ? globalStoragePath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Novel_Library'
+    : 'Novel_Library';
 
   const folderName = activeNovel.judul
     .replace(/[^a-zA-Z0-9_\-\s]/g, '')
@@ -48,7 +54,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* Folder Tree Diagram */}
           <div className="p-3 bg-[#0F1113] border border-gray-800 rounded font-mono text-[11px] text-gray-300 space-y-1 overflow-x-auto">
             <div className="text-indigo-400 font-bold flex items-center gap-1.5">
-              <FolderTree className="w-3.5 h-3.5" /> /Novel_Library/{folderName}
+              <FolderTree className="w-3.5 h-3.5" /> /{libraryDir}/{folderName}
             </div>
             <div className="pl-4 text-gray-500">├── /metadata</div>
             <div className="pl-8 text-gray-300 flex items-center gap-1">
