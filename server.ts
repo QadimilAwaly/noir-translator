@@ -1071,16 +1071,37 @@ function ensurePromptTemplateFile(): void {
     );
   };
 
-  // Helper: Deep compare references for a single novel
+  // Helper: Deep compare references for a single novel without JSON serialization
   const areReferencesEqual = (prevRefs: StoredReference[], nextRefs: StoredReference[]): boolean => {
     if (prevRefs.length !== nextRefs.length) return false;
-    return JSON.stringify(prevRefs) === JSON.stringify(nextRefs);
+    for (let i = 0; i < prevRefs.length; i++) {
+      const a = prevRefs[i];
+      const b = nextRefs[i];
+      if (a.id !== b.id || a.nama_item !== b.nama_item || a.kategori !== b.kategori || a.deskripsi !== b.deskripsi) {
+        return false;
+      }
+    }
+    return true;
   };
 
-  // Helper: Deep compare glossaries for a single novel
+  // Helper: Deep compare glossaries for a single novel without JSON serialization
   const areGlossariesEqual = (prevGloss: StoredGlossary[], nextGloss: StoredGlossary[]): boolean => {
     if (prevGloss.length !== nextGloss.length) return false;
-    return JSON.stringify(prevGloss) === JSON.stringify(nextGloss);
+    for (let i = 0; i < prevGloss.length; i++) {
+      const a = prevGloss[i];
+      const b = nextGloss[i];
+      if (
+        a.id !== b.id ||
+        a.istilah_asli !== b.istilah_asli ||
+        a.istilah_terjemahan !== b.istilah_terjemahan ||
+        a.kategori !== b.kategori ||
+        a.gender !== b.gender ||
+        a.konteks !== b.konteks
+      ) {
+        return false;
+      }
+    }
+    return true;
   };
 
   const saveLibraryStorage = async (data: {
