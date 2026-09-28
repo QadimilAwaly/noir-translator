@@ -141,11 +141,21 @@ async function startServer() {
     return null;
   }
 
+  const INVALID_FILENAME_CHARS = /[<>:"/\\|?*\u0000-\u001f]/g;
+  const MULTI_SPACE_REGEX = /\s+/g;
+  const VALID_MODEL_ID_REGEX = /^[a-zA-Z0-9._\/-]{1,100}$/;
+  const FENCE_CODEBLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+  const TRAILING_COMMA_REGEX = /,\s*([\]}])/g;
+  const CHAPTER_TITLE_REGEX = /^#\s+(?:Chapter|Bab)\s+\d+[:\s\-]*(.+)$/m;
+  const CHAPTER_STATUS_REGEX = />\s*\*\*Status:\*\*\s*(.+)$/m;
+  const CHAPTER_TRANS_REGEX = /## Hasil Terjemahan[^\n]*\n([\s\S]*?)(?:\n---|\n## Teks Asli|$)/;
+  const CHAPTER_ORIG_REGEX = /## Teks Asli[^\n]*\n([\s\S]*?)(?:\n---|$)/;
+
   // Sanitize nama file supaya aman untuk Windows (audit #6)
   function sanitizeFilename(name: string): string {
     return name
-      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
-      .replace(/\s+/g, ' ')
+      .replace(INVALID_FILENAME_CHARS, '_')
+      .replace(MULTI_SPACE_REGEX, ' ')
       .trim()
       .slice(0, 120) || 'untitled';
   }
@@ -153,8 +163,7 @@ async function startServer() {
   // Validasi format model ID (audit #18) — cegah input model sembarangan
   function sanitizeModelId(model: string): string {
     const cleaned = String(model || '').trim();
-    // hanya izinkan huruf/angka/garis/titik/slash (format "vendor/nama-model")
-    if (/^[a-zA-Z0-9._\/-]{1,100}$/.test(cleaned)) {
+    if (VALID_MODEL_ID_REGEX.test(cleaned)) {
       return cleaned;
     }
     return '';
@@ -559,7 +568,7 @@ function ensurePromptTemplateFile(): void {
     let text = str.trim();
 
     // 1. Extract first fenced code block if present
-    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const fenceMatch = text.match(FENCE_CODEBLOCK_REGEX);
     if (fenceMatch && fenceMatch[1]) {
       text = fenceMatch[1].trim();
     }
@@ -581,7 +590,7 @@ function ensurePromptTemplateFile(): void {
         } catch {
           // 5. Try repairing trailing commas before closing braces/brackets
           try {
-            const repaired = extracted.replace(/,\s*([\]}])/g, '$1');
+            const repaired = extracted.replace(TRAILING_COMMA_REGEX, '$1');
             return JSON.parse(repaired) as T;
           } catch {
             // Fall through to error
@@ -835,13 +844,13 @@ function ensurePromptTemplateFile(): void {
             const nomorChapter = extractChapterNumber(file) ?? (chapters.length + 1);
 
             let title = `Chapter ${nomorChapter}`;
-            const titleMatch = content.match(/^#\s+(?:Chapter|Bab)\s+\d+[:\s\-]*(.+)$/m);
+            const titleMatch = content.match(CHAPTER_TITLE_REGEX);
             if (titleMatch && titleMatch[1]) {
               title = titleMatch[1].trim();
             }
 
             let statusPengerjaan = 'Belum';
-            const statusMatch = content.match(/>\s*\*\*Status:\*\*\s*(.+)$/m);
+            const statusMatch = content.match(CHAPTER_STATUS_REGEX);
             if (statusMatch && statusMatch[1]) {
               statusPengerjaan = statusMatch[1].trim();
             }
@@ -849,12 +858,12 @@ function ensurePromptTemplateFile(): void {
             let originalText = '';
             let translatedText = '';
 
-            const transMatch = content.match(/## Hasil Terjemahan[^\n]*\n([\s\S]*?)(?:\n---|\n## Teks Asli|$)/);
+            const transMatch = content.match(CHAPTER_TRANS_REGEX);
             if (transMatch) {
               translatedText = transMatch[1].trim();
             }
 
-            const origMatch = content.match(/## Teks Asli[^\n]*\n([\s\S]*?)(?:\n---|$)/);
+            const origMatch = content.match(CHAPTER_ORIG_REGEX);
             if (origMatch) {
               originalText = origMatch[1].trim();
             }
