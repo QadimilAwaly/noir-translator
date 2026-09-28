@@ -9,15 +9,15 @@ import { GlossaryItem, ReferenceItem } from '../src/types';
 // Deterministic test data fixtures
 const MOCK_GLOSSARY: GlossaryItem[] = [
   { id: 'g1', novel_id: 'n1', istilah_asli: 'Spatial Ring / 储物戒', istilah_terjemahan: 'Cincin Spasial', kategori: 'Item', konteks: 'Alat penyimpanan dimensi' },
-  { id: 'g2', novel_id: 'n1', istilah_asli: 'Nine-Star Martial Realm', istilah_terjemahan: 'Ranah Bela Diri Bintang Sembilan', kategori: 'Teknik' },
+  { id: 'g2', novel_id: 'n1', istilah_asli: 'Nine-Star Martial Realm', istilah_terjemahan: 'Ranah Bela Diri Bintang Sembilan', kategori: 'Jurus/Sekte' },
   { id: 'g3', novel_id: 'n1', istilah_asli: 'Sword / 剑', istilah_terjemahan: 'Pedang', kategori: 'Item' },
-  { id: 'g4', novel_id: 'n1', istilah_asli: 'Lin Feng', istilah_terjemahan: 'Lin Feng', kategori: 'Karakter', gender: 'Male' },
+  { id: 'g4', novel_id: 'n1', istilah_asli: 'Lin Feng', istilah_terjemahan: 'Lin Feng', kategori: 'Nama', gender: 'Male' },
   { id: 'g5', novel_id: 'n1', istilah_asli: 'Azure Dragon Sect', istilah_terjemahan: 'Sekte Naga Biru', kategori: 'Tempat' },
-  { id: 'g6', novel_id: 'n1', istilah_asli: 'Zhang Kuang', istilah_terjemahan: 'Zhang Kuang', kategori: 'Karakter', gender: 'Male' },
+  { id: 'g6', novel_id: 'n1', istilah_asli: 'Zhang Kuang', istilah_terjemahan: 'Zhang Kuang', kategori: 'Nama', gender: 'Male' },
   { id: 'g7', novel_id: 'n1', istilah_asli: 'Qi Condensation Realm', istilah_terjemahan: 'Ranah Kondensasi Qi', kategori: 'Istilah Khusus' },
-  { id: 'g8', novel_id: 'n1', istilah_asli: 'Heavenly Tribulation', istilah_terjemahan: 'Bencana Surgawi', kategori: 'Lore' },
+  { id: 'g8', novel_id: 'n1', istilah_asli: 'Heavenly Tribulation', istilah_terjemahan: 'Bencana Surgawi', kategori: 'Istilah Khusus' },
   { id: 'g9', novel_id: 'n1', istilah_asli: 'Dan Furnace', istilah_terjemahan: 'Tungku Alkimia', kategori: 'Item' },
-  { id: 'g10', novel_id: 'n1', istilah_asli: 'Su Yuehan', istilah_terjemahan: 'Su Yuehan', kategori: 'Karakter', gender: 'Female' },
+  { id: 'g10', novel_id: 'n1', istilah_asli: 'Su Yuehan', istilah_terjemahan: 'Su Yuehan', kategori: 'Nama', gender: 'Female' },
 ];
 
 for (let i = 11; i <= 80; i++) {
@@ -26,13 +26,13 @@ for (let i = 11; i <= 80; i++) {
     novel_id: 'n1',
     istilah_asli: `Technique_${i} / 功法_${i}`,
     istilah_terjemahan: `Jurus_${i}`,
-    kategori: i % 2 === 0 ? 'Teknik' : 'Karakter',
+    kategori: i % 2 === 0 ? 'Jurus/Sekte' : 'Nama',
     gender: i % 3 === 0 ? 'Male' : i % 3 === 1 ? 'Female' : 'Neutral',
   });
 }
 
 const MOCK_REFERENCES: ReferenceItem[] = [
-  { id: 'r1', novel_id: 'n1', kategori: 'Sinopsis', nama_item: 'Sinopsis Utama', deskripsi: 'Perjalanan pemuda biasa yang menemukan cincin kuno dan melawan takdir langit.' },
+  { id: 'r1', novel_id: 'n1', kategori: 'Lainnya', nama_item: 'Sinopsis Utama', deskripsi: 'Perjalanan pemuda biasa yang menemukan cincin kuno dan melawan takdir langit.' },
   { id: 'r2', novel_id: 'n1', kategori: 'Gaya Bahasa', nama_item: 'Pedoman Narasi', deskripsi: 'Puitis, cepat, pertahankan ketegangan pertarungan.' },
   { id: 'r3', novel_id: 'n1', kategori: 'Lore', nama_item: 'Hierarki Wilayah', deskripsi: 'Sekte Naga Biru berada di benua selatan yang dikelilingi pegunungan awan.' },
   { id: 'r4', novel_id: 'n1', kategori: 'Karakter', nama_item: 'Lin Feng', deskripsi: 'Tokoh utama yang dingin tapi setia kawan.' },

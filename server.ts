@@ -579,11 +579,16 @@ function ensurePromptTemplateFile(): void {
         try {
           return JSON.parse(extracted) as T;
         } catch {
-          // Fall through to error
+          // 5. Try repairing trailing commas before closing braces/brackets
+          try {
+            const repaired = extracted.replace(/,\s*([\]}])/g, '$1');
+            return JSON.parse(repaired) as T;
+          } catch {
+            // Fall through to error
+          }
         }
       }
     }
-
     const preview = (str.length > 200 ? str.slice(0, 200) + '...' : str).replace(/[\r\n]+/g, ' ');
     throw new Error(`LLM returned invalid JSON: ${preview}`);
   }
