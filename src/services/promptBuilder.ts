@@ -19,6 +19,19 @@ export function renderPromptTemplate(template: string, vars: Record<string, stri
   });
 }
 
+const sourceTagCache = new Map<string, string>();
+
+function getSourceTag(lang: string | undefined): string {
+  const key = lang || 'ASLI';
+  const cached = sourceTagCache.get(key);
+  if (cached) return cached;
+  const tag = 'TEKS_ASLI_' + key.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  if (sourceTagCache.size < 50) {
+    sourceTagCache.set(key, tag);
+  }
+  return tag;
+}
+
 export function buildTranslateUserPrompt({
   judul_novel,
   nomor_chapter,
@@ -36,7 +49,7 @@ export function buildTranslateUserPrompt({
   bahasa_sumber?: string;
   bahasa_target?: string;
 }): string {
-  const sourceTag = 'TEKS_ASLI_' + String(bahasa_sumber || 'ASLI').toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  const sourceTag = getSourceTag(bahasa_sumber);
   return `[JUDUL NOVEL]
 ${makeDataSection('JUDUL_NOVEL', judul_novel || 'Novel')} - Chapter ${nomor_chapter || 1}
 
