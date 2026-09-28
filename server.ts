@@ -1215,6 +1215,26 @@ function ensurePromptTemplateFile(): void {
     const currentChapMap = new Map(current.chapters.map((c) => [c.id, c]));
     const asyncWritePromises: Promise<void>[] = [];
 
+    // Pre-group items by novel_id for O(1) lookups instead of repeated full-array scans
+    const groupItemsByNovelId = <T extends { novel_id: string }>(items: T[]): Map<string, T[]> => {
+      const map = new Map<string, T[]>();
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const existing = map.get(item.novel_id);
+        if (existing) {
+          existing.push(item);
+        } else {
+          map.set(item.novel_id, [item]);
+        }
+      }
+      return map;
+    };
+
+    const updatedRefsMap = groupItemsByNovelId(updated.references);
+    const prevRefsMap = groupItemsByNovelId(current.references);
+    const updatedGlossMap = groupItemsByNovelId(updated.glossaries);
+    const prevGlossMap = groupItemsByNovelId(current.glossaries);
+    const updatedChapsMap = groupItemsByNovelId(updated.chapters);
     try {
       for (const novel of updated.novels) {
         // Normalize legacy leading-slash relative folder_path (e.g. '/Novel_Library/X' → resolved absolute)
@@ -1237,13 +1257,13 @@ function ensurePromptTemplateFile(): void {
           hasChanges = true;
         }
 
-        const novelRefs = updated.references.filter((r: StoredReference) => r.novel_id === novel.id);
-        const prevRefs = current.references.filter((r: StoredReference) => r.novel_id === novel.id);
+        const novelRefs = updatedRefsMap.get(novel.id) || [];
+        const prevRefs = prevRefsMap.get(novel.id) || [];
 
-        const novelGloss = updated.glossaries.filter((g: StoredGlossary) => g.novel_id === novel.id);
-        const prevGloss = current.glossaries.filter((g: StoredGlossary) => g.novel_id === novel.id);
+        const novelGloss = updatedGlossMap.get(novel.id) || [];
+        const prevGloss = prevGlossMap.get(novel.id) || [];
 
-        const novelChaps = updated.chapters.filter((c: StoredChapter) => c.novel_id === novel.id);
+        const novelChaps = updatedChapsMap.get(novel.id) || [];
 
         const refPath = path.join(metadataFolder, 'reference.json');
         const glossPath = path.join(metadataFolder, 'glossary.json');
