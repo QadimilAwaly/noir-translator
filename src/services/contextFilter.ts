@@ -98,12 +98,15 @@ export function getKeywordsForMatching(termStr: string): string[] {
 const WORD_CHAR_UNICODE_REGEX = /[\p{L}\p{N}]/u;
 const UNICODE_LETTER_REGEX = /\p{L}/u;
 
-function isWordChar(char: string): boolean {
-  if (!char) return false;
-  const code = char.charCodeAt(0);
+function isWordCharCode(code: number): boolean {
   if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) return true;
   if (code < 128) return false;
-  return WORD_CHAR_UNICODE_REGEX.test(char);
+  return WORD_CHAR_UNICODE_REGEX.test(String.fromCharCode(code));
+}
+
+function isWordChar(char: string): boolean {
+  if (!char) return false;
+  return isWordCharCode(char.charCodeAt(0));
 }
 
 interface ParsedCandidate {
@@ -149,11 +152,12 @@ function isParsedCandidateMatching(cand: ParsedCandidate, lowerText: string): bo
 
   // Latin / Mixed / Unicode terms: check Unicode-aware word boundary without compiling regex
   if (cand.len >= 2 || (cand.len === 1 && UNICODE_LETTER_REGEX.test(cand.lower))) {
+    const textLen = lowerText.length;
     let pos = firstPos;
     while (pos !== -1) {
-      const prevChar = pos > 0 ? lowerText[pos - 1] : '';
-      const nextChar = pos + cand.len < lowerText.length ? lowerText[pos + cand.len] : '';
-      if (!isWordChar(prevChar) && !isWordChar(nextChar)) {
+      const prevCode = pos > 0 ? lowerText.charCodeAt(pos - 1) : 0;
+      const nextCode = pos + cand.len < textLen ? lowerText.charCodeAt(pos + cand.len) : 0;
+      if (!isWordCharCode(prevCode) && !isWordCharCode(nextCode)) {
         return true;
       }
       pos = lowerText.indexOf(cand.lower, pos + 1);
