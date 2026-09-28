@@ -156,9 +156,11 @@ function isParsedCandidateMatching(cand: ParsedCandidate, lowerText: string): bo
     let pos = firstPos;
     while (pos !== -1) {
       const prevCode = pos > 0 ? lowerText.charCodeAt(pos - 1) : 0;
-      const nextCode = pos + cand.len < textLen ? lowerText.charCodeAt(pos + cand.len) : 0;
-      if (!isWordCharCode(prevCode) && !isWordCharCode(nextCode)) {
-        return true;
+      if (!isWordCharCode(prevCode)) {
+        const nextCode = pos + cand.len < textLen ? lowerText.charCodeAt(pos + cand.len) : 0;
+        if (!isWordCharCode(nextCode)) {
+          return true;
+        }
       }
       pos = lowerText.indexOf(cand.lower, pos + 1);
     }
@@ -189,18 +191,21 @@ export function filterRelevantGlossaries(
   }
 
   const lowerText = text.toLowerCase();
+  const matched: GlossaryItem[] = [];
 
-  return glossaries.filter((item) => {
+  for (let g = 0; g < glossaries.length; g++) {
+    const item = glossaries[g];
     const candidates = getParsedCandidates(item.istilah_asli);
     for (let i = 0; i < candidates.length; i++) {
       if (isParsedCandidateMatching(candidates[i], lowerText)) {
-        return true;
+        matched.push(item);
+        break;
       }
     }
-    return false;
-  });
-}
+  }
 
+  return matched;
+}
 /**
  * Filter references to only include items relevant to the text.
  * Always keeps 'Gaya Bahasa' and 'Sinopsis' items, while filtering
@@ -216,7 +221,10 @@ export function filterRelevantReferences(
 
   const lowerText = text.toLowerCase();
 
-  return references.filter((item) => {
+  const matched: ReferenceItem[] = [];
+
+  for (let r = 0; r < references.length; r++) {
+    const item = references[r];
     // Always include global style or general synopsis rules
     if (
       item.kategori === 'Gaya Bahasa' ||
@@ -224,17 +232,19 @@ export function filterRelevantReferences(
       item.nama_item.toLowerCase().includes('sinopsis') ||
       item.nama_item.toLowerCase().includes('tone')
     ) {
-      return true;
+      matched.push(item);
+      continue;
     }
 
     // Check item name using candidates matching
     const candidates = getParsedCandidates(item.nama_item);
     for (let i = 0; i < candidates.length; i++) {
       if (isParsedCandidateMatching(candidates[i], lowerText)) {
-        return true;
+        matched.push(item);
+        break;
       }
     }
+  }
 
-    return false;
-  });
+  return matched;
 }
