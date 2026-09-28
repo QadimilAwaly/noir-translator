@@ -95,40 +95,80 @@ export function getKeywordsForMatching(termStr: string): string[] {
  * - For Latin / mixed / Unicode terms: uses Unicode-aware word boundary lookarounds.
  * - Accepts length >= 1 for CJK, length >= 2 for Latin, and length === 1 for Latin Unicode letters.
  */
+const WORD_CHAR_UNICODE_REGEX = /[\p{L}\p{N}]/u;
+const UNICODE_LETTER_REGEX = /\p{L}/u;
+
 function isWordChar(char: string): boolean {
   if (!char) return false;
   const code = char.charCodeAt(0);
   if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) return true;
   if (code < 128) return false;
-  return /\p{L}|\p{N}/u.test(char);
+  return WORD_CHAR_UNICODE_REGEX.test(char);
 }
 
-function isCandidateMatching(candidate: string, lowerText: string): boolean {
-  if (!candidate || !lowerText) return false;
-  const candLower = candidate.toLowerCase();
+interface ParsedCandidate {
+  raw: string;
+  lower: string;
+  isPureCJK: boolean;
+  len: number;
+}
 
-  const firstPos = lowerText.indexOf(candLower);
+const parsedCandidatesCache = new Map<string, ParsedCandidate[]>();
+
+function getParsedCandidates(termStr: string): ParsedCandidate[] {
+  if (!termStr || !termStr.trim()) return [];
+
+  const cached = parsedCandidatesCache.get(termStr);
+  if (cached) return cached;
+
+  const rawCandidates = getKeywordsForMatching(termStr);
+  const parsed: ParsedCandidate[] = rawCandidates.map((cand) => {
+    const lower = cand.toLowerCase();
+    return {
+      raw: cand,
+      lower,
+      isPureCJK: PURE_CJK_REGEX.test(cand),
+      len: lower.length,
+    };
+  });
+
+  if (parsedCandidatesCache.size < 2000) {
+    parsedCandidatesCache.set(termStr, parsed);
+  }
+  return parsed;
+}
+
+function isParsedCandidateMatching(cand: ParsedCandidate, lowerText: string): boolean {
+  const firstPos = lowerText.indexOf(cand.lower);
   if (firstPos === -1) return false;
 
   // Pure CJK (or Hangul/Kana): substring match is sufficient and correct
-  if (PURE_CJK_REGEX.test(candidate)) {
+  if (cand.isPureCJK) {
     return true;
   }
 
   // Latin / Mixed / Unicode terms: check Unicode-aware word boundary without compiling regex
-  if (candidate.length >= 2 || (candidate.length === 1 && /\p{L}/u.test(candidate))) {
-    const candLen = candLower.length;
+  if (cand.len >= 2 || (cand.len === 1 && UNICODE_LETTER_REGEX.test(cand.lower))) {
     let pos = firstPos;
     while (pos !== -1) {
       const prevChar = pos > 0 ? lowerText[pos - 1] : '';
-      const nextChar = pos + candLen < lowerText.length ? lowerText[pos + candLen] : '';
+      const nextChar = pos + cand.len < lowerText.length ? lowerText[pos + cand.len] : '';
       if (!isWordChar(prevChar) && !isWordChar(nextChar)) {
         return true;
       }
-      pos = lowerText.indexOf(candLower, pos + 1);
+      pos = lowerText.indexOf(cand.lower, pos + 1);
     }
   }
 
+  return false;
+}
+
+function isCandidateMatching(candidate: string, lowerText: string): boolean {
+  if (!candidate || !lowerText) return false;
+  const parsed = getParsedCandidates(candidate);
+  if (parsed.length > 0) {
+    return isParsedCandidateMatching(parsed[0], lowerText);
+  }
   return false;
 }
 
@@ -147,19 +187,12 @@ export function filterRelevantGlossaries(
   const lowerText = text.toLowerCase();
 
   return glossaries.filter((item) => {
-    // 1. Fast path for pure CJK whole-term (CJK scripts have no spaces/word boundaries)
-    if (PURE_CJK_REGEX.test(item.istilah_asli) && lowerText.includes(item.istilah_asli.toLowerCase())) {
-      return true;
-    }
-
-    // 2. Candidates check with word boundaries and language alternation splitting
-    const candidates = getKeywordsForMatching(item.istilah_asli);
-    for (const cand of candidates) {
-      if (isCandidateMatching(cand, lowerText)) {
+    const candidates = getParsedCandidates(item.istilah_asli);
+    for (let i = 0; i < candidates.length; i++) {
+      if (isParsedCandidateMatching(candidates[i], lowerText)) {
         return true;
       }
     }
-
     return false;
   });
 }
@@ -191,9 +224,9 @@ export function filterRelevantReferences(
     }
 
     // Check item name using candidates matching
-    const candidates = getKeywordsForMatching(item.nama_item);
-    for (const cand of candidates) {
-      if (isCandidateMatching(cand, lowerText)) {
+    const candidates = getParsedCandidates(item.nama_item);
+    for (let i = 0; i < candidates.length; i++) {
+      if (isParsedCandidateMatching(candidates[i], lowerText)) {
         return true;
       }
     }
