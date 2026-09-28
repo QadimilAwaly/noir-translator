@@ -4,11 +4,21 @@ import { GlossaryItem, ReferenceItem } from '../types';
  * Normalizes text for matching across CJK (Chinese/Japanese/Korean) and Latin scripts.
  * Strips punctuation and converts Latin to lower case.
  */
+const cleanKeywordCache = new Map<string, string>();
+
 export function cleanSearchKeyword(term: string): string {
-  return term
+  const cached = cleanKeywordCache.get(term);
+  if (cached !== undefined) return cached;
+
+  const cleaned = term
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\u4e00-\u9fa5\u3040-\u30ff\u3400-\u4dbf\uac00-\ud7af]/gu, '')
     .trim();
+
+  if (cleanKeywordCache.size < 2000) {
+    cleanKeywordCache.set(term, cleaned);
+  }
+  return cleaned;
 }
 
 /**
@@ -47,8 +57,13 @@ const PURE_CJK_REGEX = /^[\u4e00-\u9fa5\u3040-\u30ff\u3400-\u4dbf\uac00-\ud7af]+
  * 2. For terms containing a language alternation separator (/ ( |), additionally returns each side trimmed.
  * 3. Does NOT split on space for Latin portions (prevents noisy sub-words from over-matching).
  */
+const keywordsCache = new Map<string, string[]>();
+
 export function getKeywordsForMatching(termStr: string): string[] {
   if (!termStr || !termStr.trim()) return [];
+
+  const cached = keywordsCache.get(termStr);
+  if (cached) return cached;
 
   const candidates: string[] = [];
   const rawTrimmed = termStr.trim();
@@ -67,6 +82,10 @@ export function getKeywordsForMatching(termStr: string): string[] {
     }
   }
 
+  if (keywordsCache.size < 2000) {
+    keywordsCache.set(termStr, candidates);
+  }
+
   return candidates;
 }
 
@@ -76,32 +95,35 @@ export function getKeywordsForMatching(termStr: string): string[] {
  * - For Latin / mixed / Unicode terms: uses Unicode-aware word boundary lookarounds.
  * - Accepts length >= 1 for CJK, length >= 2 for Latin, and length === 1 for Latin Unicode letters.
  */
+const regexCache = new Map<string, RegExp>();
+
 function isCandidateMatching(candidate: string, lowerText: string): boolean {
   if (!candidate || !lowerText) return false;
   const candLower = candidate.toLowerCase();
 
+  // Fast pre-filter: if substring does not exist in lowerText, boundary regex can NEVER match!
+  if (!lowerText.includes(candLower)) {
+    return false;
+  }
+
   // Pure CJK (or Hangul/Kana): substring match is sufficient and correct
   if (PURE_CJK_REGEX.test(candidate)) {
-    return lowerText.includes(candLower);
+    return true;
   }
 
   // Latin / Mixed / Unicode terms: use Unicode-aware word boundary lookarounds
-  if (candidate.length >= 2) {
+  if (candidate.length >= 2 || (candidate.length === 1 && /\p{L}/u.test(candidate))) {
     try {
-      const regex = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(candLower)}(?![\\p{L}\\p{N}])`, 'iu');
+      let regex = regexCache.get(candLower);
+      if (!regex) {
+        regex = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(candLower)}(?![\\p{L}\\p{N}])`, 'iu');
+        if (regexCache.size < 1500) {
+          regexCache.set(candLower, regex);
+        }
+      }
       return regex.test(lowerText);
     } catch {
-      return lowerText.includes(candLower);
-    }
-  }
-
-  // Single-character Latin/letter: require Unicode word boundary
-  if (candidate.length === 1 && /\p{L}/u.test(candidate)) {
-    try {
-      const regex = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(candLower)}(?![\\p{L}\\p{N}])`, 'iu');
-      return regex.test(lowerText);
-    } catch {
-      return lowerText.includes(candLower);
+      return true;
     }
   }
 
