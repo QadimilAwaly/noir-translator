@@ -9,12 +9,16 @@
  *   Notes_v3.md (no chapter prefix; the 3 is not the chapter)
  *   Appendix_Backup_20231225.txt (date-like number, no chapter prefix)
  */
+const EXT_REGEX = /\.(md|txt)$/i;
+const PREFIX_REGEX = /(?:^|[_\-\s])(?:Chapter|chap|Bab|bab)[_\-\s]*(\d{1,5})(?:[_\-\s].*)?$/i;
+const DIGITS_ONLY_REGEX = /^\d{1,5}$/;
+
 export function extractChapterNumber(filename: string): number | null {
   // Strip extension
-  const base = filename.replace(/\.(md|txt)$/i, '');
+  const base = filename.replace(EXT_REGEX, '');
 
   // Strategy 1: explicit chapter prefix (Chapter|chap|Bab|bab) followed by number
-  const prefixMatch = base.match(/(?:^|[_\-\s])(?:Chapter|chap|Bab|bab)[_\-\s]*(\d{1,5})(?:[_\-\s].*)?$/i);
+  const prefixMatch = base.match(PREFIX_REGEX);
   if (prefixMatch) {
     const n = parseInt(prefixMatch[1], 10);
     if (!isNaN(n) && n >= 0 && n <= 99999) return n;
@@ -22,7 +26,7 @@ export function extractChapterNumber(filename: string): number | null {
   }
 
   // Strategy 2: filename is entirely digits (e.g. 01.md, 12.txt)
-  if (/^\d{1,5}$/.test(base)) {
+  if (DIGITS_ONLY_REGEX.test(base)) {
     const n = parseInt(base, 10);
     if (!isNaN(n) && n >= 0 && n <= 99999) return n;
   }
