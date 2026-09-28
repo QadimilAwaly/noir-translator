@@ -1277,8 +1277,8 @@ function ensurePromptTemplateFile(): void {
         const refPath = path.join(metadataFolder, 'reference.json');
         const glossPath = path.join(metadataFolder, 'glossary.json');
 
-        // 4. Dirty check references: only write if missing or modified
-        const isRefDirty = !fs.existsSync(refPath) || (Array.isArray(data.references) && !areReferencesEqual(prevRefs, novelRefs));
+        // 4. Dirty check references: in-memory check first to short-circuit disk stat
+        const isRefDirty = (Array.isArray(data.references) && !areReferencesEqual(prevRefs, novelRefs)) || !fs.existsSync(refPath);
         if (isRefDirty) {
           hasChanges = true;
           const synopsisItem = novelRefs.find((r: StoredReference) => r.nama_item?.toLowerCase().includes('sinopsis') || r.kategori === 'Sinopsis');
@@ -1295,8 +1295,8 @@ function ensurePromptTemplateFile(): void {
           asyncWritePromises.push(fs.promises.writeFile(refPath, JSON.stringify(refPayload, null, 2), 'utf-8'));
         }
 
-        // 5. Dirty check glossaries: only write if missing or modified
-        const isGlossDirty = !fs.existsSync(glossPath) || (Array.isArray(data.glossaries) && !areGlossariesEqual(prevGloss, novelGloss));
+        // 5. Dirty check glossaries: in-memory check first to short-circuit disk stat
+        const isGlossDirty = (Array.isArray(data.glossaries) && !areGlossariesEqual(prevGloss, novelGloss)) || !fs.existsSync(glossPath);
         if (isGlossDirty) {
           hasChanges = true;
           asyncWritePromises.push(fs.promises.writeFile(glossPath, JSON.stringify(novelGloss, null, 2), 'utf-8'));
@@ -1304,16 +1304,18 @@ function ensurePromptTemplateFile(): void {
 
         // 6. Dirty check chapters: only write modified chapters (skip identical files)
         if (Array.isArray(data.chapters)) {
+          const safeNovelJudul = sanitizeFilename(novel.judul);
           for (const chap of novelChaps) {
-            const padNum = String(Number(chap.nomor_chapter) || 1).padStart(2, '0');
+            const num = Number(chap.nomor_chapter) || 1;
+            const padNum = num < 10 ? '0' + num : String(num);
             const safeChapTitle = sanitizeFilename(chap.judul_chapter || 'Chapter ' + chap.nomor_chapter);
             const chapPath = path.join(novelFolder, `Chapter_${padNum}.md`);
             const prevChap = currentChapMap.get(chap.id);
 
-            if (!fs.existsSync(chapPath) || isChapterDirty(prevChap, chap)) {
+            if (isChapterDirty(prevChap, chap) || !fs.existsSync(chapPath)) {
               hasChanges = true;
               const divider = '---';
-              const mdContent = `# Chapter ${chap.nomor_chapter}: ${safeChapTitle}\n\n> **Novel:** ${sanitizeFilename(novel.judul)}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
+              const mdContent = `# Chapter ${chap.nomor_chapter}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
               asyncWritePromises.push(fs.promises.writeFile(chapPath, mdContent, 'utf-8'));
             }
           }
