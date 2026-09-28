@@ -488,27 +488,27 @@ function ensurePromptTemplateFile(): void {
     const firstBracket = input.indexOf('[');
 
     let startIdx = -1;
-    let openChar = '{';
-    let closeChar = '}';
+    let openCode = 123; // '{'
+    let closeCode = 125; // '}'
 
     if (firstBrace !== -1 && firstBracket !== -1) {
       if (firstBrace < firstBracket) {
         startIdx = firstBrace;
-        openChar = '{';
-        closeChar = '}';
+        openCode = 123;
+        closeCode = 125;
       } else {
         startIdx = firstBracket;
-        openChar = '[';
-        closeChar = ']';
+        openCode = 91; // '['
+        closeCode = 93; // ']'
       }
     } else if (firstBrace !== -1) {
       startIdx = firstBrace;
-      openChar = '{';
-      closeChar = '}';
+      openCode = 123;
+      closeCode = 125;
     } else if (firstBracket !== -1) {
       startIdx = firstBracket;
-      openChar = '[';
-      closeChar = ']';
+      openCode = 91;
+      closeCode = 93;
     } else {
       return null;
     }
@@ -518,27 +518,27 @@ function ensurePromptTemplateFile(): void {
     let isEscaped = false;
 
     for (let i = startIdx; i < input.length; i++) {
-      const char = input[i];
+      const code = input.charCodeAt(i);
 
       if (isEscaped) {
         isEscaped = false;
         continue;
       }
 
-      if (char === '\\' && inString) {
+      if (code === 92 && inString) {
         isEscaped = true;
         continue;
       }
 
-      if (char === '"') {
+      if (code === 34) {
         inString = !inString;
         continue;
       }
 
       if (!inString) {
-        if (char === openChar) {
+        if (code === openCode) {
           depth++;
-        } else if (char === closeChar) {
+        } else if (code === closeCode) {
           depth--;
           if (depth === 0) {
             return input.slice(startIdx, i + 1);
