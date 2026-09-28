@@ -95,35 +95,37 @@ export function getKeywordsForMatching(termStr: string): string[] {
  * - For Latin / mixed / Unicode terms: uses Unicode-aware word boundary lookarounds.
  * - Accepts length >= 1 for CJK, length >= 2 for Latin, and length === 1 for Latin Unicode letters.
  */
-const regexCache = new Map<string, RegExp>();
+function isWordChar(char: string): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) return true;
+  if (code < 128) return false;
+  return /\p{L}|\p{N}/u.test(char);
+}
 
 function isCandidateMatching(candidate: string, lowerText: string): boolean {
   if (!candidate || !lowerText) return false;
   const candLower = candidate.toLowerCase();
 
-  // Fast pre-filter: if substring does not exist in lowerText, boundary regex can NEVER match!
-  if (!lowerText.includes(candLower)) {
-    return false;
-  }
+  const firstPos = lowerText.indexOf(candLower);
+  if (firstPos === -1) return false;
 
   // Pure CJK (or Hangul/Kana): substring match is sufficient and correct
   if (PURE_CJK_REGEX.test(candidate)) {
     return true;
   }
 
-  // Latin / Mixed / Unicode terms: use Unicode-aware word boundary lookarounds
+  // Latin / Mixed / Unicode terms: check Unicode-aware word boundary without compiling regex
   if (candidate.length >= 2 || (candidate.length === 1 && /\p{L}/u.test(candidate))) {
-    try {
-      let regex = regexCache.get(candLower);
-      if (!regex) {
-        regex = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(candLower)}(?![\\p{L}\\p{N}])`, 'iu');
-        if (regexCache.size < 1500) {
-          regexCache.set(candLower, regex);
-        }
+    const candLen = candLower.length;
+    let pos = firstPos;
+    while (pos !== -1) {
+      const prevChar = pos > 0 ? lowerText[pos - 1] : '';
+      const nextChar = pos + candLen < lowerText.length ? lowerText[pos + candLen] : '';
+      if (!isWordChar(prevChar) && !isWordChar(nextChar)) {
+        return true;
       }
-      return regex.test(lowerText);
-    } catch {
-      return true;
+      pos = lowerText.indexOf(candLower, pos + 1);
     }
   }
 
