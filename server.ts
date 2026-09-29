@@ -1078,13 +1078,39 @@ function ensurePromptTemplateFile(): void {
     }
     return currentData;
   };
+  interface LibraryDataResult {
+    novels: StoredNovel[];
+    chapters: StoredChapter[];
+    references: StoredReference[];
+    glossaries: StoredGlossary[];
+    last_updated: string;
+  }
 
-  const readLibraryStorage = () => {
+  let cachedLibraryData: LibraryDataResult | null = null;
+  let cachedLibraryIndexMtime = 0;
+
+  const invalidateLibraryCache = () => {
+    cachedLibraryData = null;
+    cachedLibraryIndexMtime = 0;
+  };
+
+  const readLibraryStorage = (): LibraryDataResult => {
     const filePath = getLibraryIndexFilePath();
     const libraryBase = getLibraryStorageDir();
+
+    if (fs.existsSync(filePath)) {
+      try {
+        const stat = fs.statSync(filePath);
+        if (cachedLibraryData && cachedLibraryIndexMtime === stat.mtimeMs) {
+          return cachedLibraryData;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     let indexedNovels: StoredNovel[] = [];
     let lastUpdated = new Date().toISOString();
-
     try {
       if (fs.existsSync(filePath)) {
         const raw = fs.readFileSync(filePath, 'utf-8');
@@ -1120,9 +1146,16 @@ function ensurePromptTemplateFile(): void {
       glossaries: allGlossaries,
       last_updated: lastUpdated,
     };
-
-    // Scan for unindexed novel folders and sync
-    return scanAndSyncNovelFolders(result);
+    const finalResult = scanAndSyncNovelFolders(result);
+    cachedLibraryData = finalResult;
+    try {
+      if (fs.existsSync(filePath)) {
+        cachedLibraryIndexMtime = fs.statSync(filePath).mtimeMs;
+      }
+    } catch {
+      // ignore
+    }
+    return finalResult;
   };
 
   // Helper: Invariant check for Chapter modification (Audit-Daya #06)
@@ -1398,6 +1431,7 @@ function ensurePromptTemplateFile(): void {
       await fs.promises.writeFile(filePath, JSON.stringify(manifest, null, 2), 'utf-8');
     }
 
+    invalidateLibraryCache();
     return updated;
   };
 
@@ -1590,6 +1624,7 @@ function ensurePromptTemplateFile(): void {
       const mdContent = `# Chapter ${chapter_number}: ${safeTitle}\n\n> **Novel:** ${sanitizeFilename(novel_title || 'Novel')}\n> **Bahasa:** ${source_lang || 'Asli'} -> ${target_lang || 'Target'}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${target_lang || 'Target'})\n\n${translated_text || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${source_lang || 'Asli'})\n\n${original_text || '*(Kosong)*'}\n`;
 
       fs.writeFileSync(filePath, mdContent, 'utf-8');
+      invalidateLibraryCache();
       res.json({ status: 'success', path: filePath });
     } catch (error: any) {
       console.error('Error saving chapter file to disk:', error);
