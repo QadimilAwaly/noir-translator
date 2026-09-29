@@ -104,6 +104,8 @@ async function run() {
       '--platform=node',
       '--format=esm',
       '--packages=external',
+      '--minify-whitespace',
+      '--minify-syntax',
       '--sourcemap',
       '--outfile=dist/server.js',
     ],

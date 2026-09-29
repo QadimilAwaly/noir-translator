@@ -12,7 +12,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --minify-whitespace --minify-syntax --sourcemap --outfile=dist/server.js",
     "start": "node --optimize-for-size --max-semi-space-size=2 --max-old-space-size=64 dist/server.js",
     "start:prod": "npm run build && NODE_ENV=production node --optimize-for-size --max-semi-space-size=2 --max-old-space-size=64 dist/server.js",
     "preview": "vite preview",
