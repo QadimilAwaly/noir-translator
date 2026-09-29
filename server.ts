@@ -614,7 +614,18 @@ function ensurePromptTemplateFile(): void {
   // Helper: Read/Write App Config File (config.json)
   const CONFIG_PATH = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.json');
 
-  const getDefaultConfig = () => ({
+  interface AppConfig {
+    global_storage_path: string;
+    default_provider: string;
+    default_model: string;
+    default_openrouter_model?: string;
+    gemini_fallback_model?: string;
+    gemini_api_key?: string;
+    openrouter_api_key?: string;
+    [key: string]: unknown;
+  }
+
+  const getDefaultConfig = (): AppConfig => ({
     global_storage_path: process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || path.join(process.cwd(), 'Novel_Library'),
     default_provider: process.env.DEFAULT_PROVIDER || 'gemini',
     default_model: process.env.DEFAULT_MODEL || process.env.DEFAULT_GEMINI_MODEL || 'gemini-2.5-flash',
@@ -624,10 +635,10 @@ function ensurePromptTemplateFile(): void {
     openrouter_api_key: process.env.OPENROUTER_API_KEY || '',
   });
 
-  let cachedConfig: Record<string, any> | null = null;
+  let cachedConfig: AppConfig | null = null;
   let cachedConfigMtime = 0;
 
-  const readConfig = () => {
+  const readConfig = (): AppConfig => {
     try {
       if (fs.existsSync(CONFIG_PATH)) {
         const stat = fs.statSync(CONFIG_PATH);
@@ -635,9 +646,10 @@ function ensurePromptTemplateFile(): void {
           return cachedConfig;
         }
         const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
-        cachedConfig = { ...getDefaultConfig(), ...JSON.parse(raw) };
+        const parsed: AppConfig = { ...getDefaultConfig(), ...JSON.parse(raw) };
+        cachedConfig = parsed;
         cachedConfigMtime = stat.mtimeMs;
-        return cachedConfig;
+        return parsed;
       }
     } catch (e) {
       console.error('Error reading config.json:', e);
