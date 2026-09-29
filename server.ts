@@ -2043,7 +2043,7 @@ HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab
     app.use(vite.middlewares);
   } else {
     const distPath = process.env.DIST_PATH || (fs.existsSync(path.join(process.cwd(), 'dist')) ? path.join(process.cwd(), 'dist') : currentDirname);
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { maxAge: '1h', index: false }));
     const indexHtmlPath = path.join(distPath, 'index.html');
     app.get('*', (req, res) => {
       res.sendFile(indexHtmlPath);
