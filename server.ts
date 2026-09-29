@@ -2043,8 +2043,9 @@ HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab
   } else {
     const distPath = process.env.DIST_PATH || (fs.existsSync(path.join(process.cwd(), 'dist')) ? path.join(process.cwd(), 'dist') : currentDirname);
     app.use(express.static(distPath));
+    const indexHtmlPath = path.join(distPath, 'index.html');
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.sendFile(indexHtmlPath);
     });
   }
 
