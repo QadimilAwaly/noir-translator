@@ -12,7 +12,6 @@ import http from 'http';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import { GoogleGenAI, Type } from '@google/genai';
 import { makeDataSection, PROMPT_INJECTION_GUARD, buildTranslateUserPrompt } from './src/services/promptBuilder';
 import { extractChapterNumber } from './src/services/chapterParser';
 // Load environment variables (.env.local has precedence over .env)
@@ -382,11 +381,12 @@ function ensurePromptTemplateFile(): void {
     throw lastError;
   };
 
-  // In-memory cache for GoogleGenAI clients to reuse connection pool & avoid per-request allocations (Audit-Daya #02)
-  const genAIClientCache = new Map<string, GoogleGenAI>();
+  // Lazy-loaded GoogleGenAI class & in-memory cache to prevent memory bloat during idle
+  let GoogleGenAIClass: any = null;
+  const genAIClientCache = new Map<string, any>();
 
   // Helper: Get Gemini AI Client
-  const getGenAI = (customKey?: string) => {
+  const getGenAI = async (customKey?: string) => {
     const apiKey = customKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY belum dikonfigurasi.');
@@ -395,7 +395,11 @@ function ensurePromptTemplateFile(): void {
     if (cached) {
       return cached;
     }
-    const client = new GoogleGenAI({
+    if (!GoogleGenAIClass) {
+      const genaiMod = await import('@google/genai');
+      GoogleGenAIClass = genaiMod.GoogleGenAI;
+    }
+    const client = new GoogleGenAIClass({
       apiKey,
       httpOptions: {
         headers: {
@@ -406,7 +410,6 @@ function ensurePromptTemplateFile(): void {
     genAIClientCache.set(apiKey, client);
     return client;
   };
-
   // Helper: Gemini Call with Automatic Retry & Model Fallback on 503/High Demand
   const callGeminiWithRetryAndFallback = async ({
     model,
@@ -423,7 +426,7 @@ function ensurePromptTemplateFile(): void {
     responseMimeType?: string;
     responseSchema?: any;
   }) => {
-    const ai = getGenAI(apiKeyOverride);
+    const ai = await getGenAI(apiKeyOverride);
 
     // Build fallback list if primary model fails with 503
     const config = readConfig();
@@ -1931,32 +1934,32 @@ HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab
           prompt,
           responseMimeType: 'application/json',
           responseSchema: {
-            type: Type.OBJECT,
+            type: 'OBJECT',
             properties: {
               terms: {
-                type: Type.ARRAY,
+                type: 'ARRAY',
                 description: `Daftar istilah baru yang diekstrak dari chapter dari ${sourceLang} ke ${targetLang}.`,
                 items: {
-                  type: Type.OBJECT,
+                  type: 'OBJECT',
                   properties: {
                     istilah_asli: {
-                      type: Type.STRING,
+                      type: 'STRING',
                       description: `Nama/istilah dalam bahasa sumber asli (${sourceLang})`,
                     },
                     istilah_terjemahan: {
-                      type: Type.STRING,
+                      type: 'STRING',
                       description: `Terjemahan resmi istilah tersebut dalam bahasa target (${targetLang})`,
                     },
                     kategori: {
-                      type: Type.STRING,
+                      type: 'STRING',
                       description: 'Kategori istilah: "Nama", "Tempat", "Jurus/Sekte", "Item", atau "Istilah Khusus"',
                     },
                     gender: {
-                      type: Type.STRING,
+                      type: 'STRING',
                       description: 'Gender karakter jika kategori "Nama": "Male", "Female", atau "Neutral" (untuk panduan pronoun he/she dalam bahasa Inggris)',
                     },
                     konteks: {
-                      type: Type.STRING,
+                      type: 'STRING',
                       description: `Penjelasan/konteks penggunaan singkat dalam bahasa ${targetLang}.`,
                     },
                   },

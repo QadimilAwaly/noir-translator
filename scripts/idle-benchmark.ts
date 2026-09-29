@@ -46,6 +46,22 @@ function readProcStats(pid: number): ProcStats {
   };
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function httpRequest(options: {
   path: string;
   method?: string;
@@ -53,7 +69,7 @@ function httpRequest(options: {
   body?: string;
   agent?: http.Agent;
 }): Promise<{ status: number; data: string }> {
-  const { promise, resolve, reject } = Promise.withResolvers<{ status: number; data: string }>();
+  const { promise, resolve, reject } = createDeferred<{ status: number; data: string }>();
   const req = http.request(
     {
       hostname: '127.0.0.1',
@@ -96,7 +112,7 @@ async function run() {
   esbuild.stderr?.on('data', (d) => {
     buildStderr += d.toString();
   });
-  const { promise: buildPromise, resolve: resolveBuild } = Promise.withResolvers<number>();
+  const { promise: buildPromise, resolve: resolveBuild } = createDeferred<number>();
   esbuild.on('close', (code) => resolveBuild(code ?? 1));
   const buildExitCode = await buildPromise;
 
@@ -117,7 +133,7 @@ async function run() {
   }
 
   // Wait for server ready
-  const { promise: readyPromise, resolve: resolveReady, reject: rejectReady } = Promise.withResolvers<void>();
+  const { promise: readyPromise, resolve: resolveReady, reject: rejectReady } = createDeferred<void>();
   const readyTimer = setTimeout(() => rejectReady(new Error('Server failed to start within 10s')), 10000);
   server.stdout?.on('data', (chunk: Buffer) => {
     if (chunk.toString().includes('Listening on http://')) {
