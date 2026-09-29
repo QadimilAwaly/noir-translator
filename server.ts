@@ -60,6 +60,7 @@ async function startServer() {
   const HOST = process.env.HOST || '127.0.0.1';
   const isProduction = process.env.NODE_ENV === 'production' || currentFilename.includes('dist');
   app.disable('x-powered-by'); // audit #10
+  app.set('etag', 'weak');
 
   // Pastikan file prompt eksternal prompt/translation.md tersedia
   ensurePromptTemplateFile();
