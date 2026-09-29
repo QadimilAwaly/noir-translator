@@ -188,22 +188,35 @@ async function startServer() {
     return '';
   }
 
-  // Reusable HTTP/HTTPS keep-alive agents for external LLM calls (Audit-Daya #02)
-  const httpsAgent = new https.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 30000,
-    maxSockets: 25,
-    maxFreeSockets: 10,
-    timeout: 60000,
-  });
+  // Lazy-initialized reusable HTTP/HTTPS keep-alive agents for external LLM calls (Audit-Daya #02)
+  let httpsAgent: https.Agent | null = null;
+  let httpAgent: http.Agent | null = null;
 
-  const httpAgent = new http.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 30000,
-    maxSockets: 25,
-    maxFreeSockets: 10,
-    timeout: 60000,
-  });
+  function getHttpsAgent(): https.Agent {
+    if (!httpsAgent) {
+      httpsAgent = new https.Agent({
+        keepAlive: true,
+        keepAliveMsecs: 15000,
+        maxSockets: 10,
+        maxFreeSockets: 2,
+        timeout: 30000,
+      });
+    }
+    return httpsAgent;
+  }
+
+  function getHttpAgent(): http.Agent {
+    if (!httpAgent) {
+      httpAgent = new http.Agent({
+        keepAlive: true,
+        keepAliveMsecs: 15000,
+        maxSockets: 10,
+        maxFreeSockets: 2,
+        timeout: 30000,
+      });
+    }
+    return httpAgent;
+  }
 
   // Fetch dengan timeout & HTTP keep-alive connection pooling (audit #8 & audit-daya #02)
   async function fetchWithTimeout(
@@ -215,7 +228,7 @@ async function startServer() {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const isHttps = url.startsWith('https:');
-      const agent = options.agent || (isHttps ? httpsAgent : httpAgent);
+      const agent = options.agent || (isHttps ? getHttpsAgent() : getHttpAgent());
       return await fetch(url, {
         ...options,
         signal: controller.signal,
