@@ -10,15 +10,34 @@ import fs from 'fs';
 import https from 'https';
 import http from 'http';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { makeDataSection, PROMPT_INJECTION_GUARD, buildTranslateUserPrompt } from './src/services/promptBuilder';
 import { extractChapterNumber } from './src/services/chapterParser';
-// Load environment variables (.env.local has precedence over .env)
-if (fs.existsSync('.env.local')) {
-  dotenv.config({ path: '.env.local' });
+// Zero-overhead environment loader (.env.local has precedence over .env)
+function loadEnvFile(filepath: string): void {
+  try {
+    if (!fs.existsSync(filepath)) return;
+    const content = fs.readFileSync(filepath, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx <= 0) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (process.env[key] === undefined) {
+        process.env[key] = val;
+      }
+    }
+  } catch {
+    // ignore read errors
+  }
 }
-dotenv.config();
+loadEnvFile('.env.local');
+loadEnvFile('.env');
 
 const currentFilename = typeof import.meta !== 'undefined' && import.meta?.url ? fileURLToPath(import.meta.url) : '';
 const currentDirname = currentFilename ? path.dirname(currentFilename) : process.cwd();
