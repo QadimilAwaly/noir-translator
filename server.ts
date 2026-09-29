@@ -111,12 +111,12 @@ async function startServer() {
   function pruneIpHits(map: Map<string, number[]>, windowMs: number, now: number = Date.now()): number {
     let removedCount = 0;
     for (const [ip, hits] of map.entries()) {
-      const active = hits.filter((t) => now - t < windowMs);
-      if (active.length === 0) {
+      while (hits.length > 0 && now - hits[0] >= windowMs) {
+        hits.shift();
+      }
+      if (hits.length === 0) {
         map.delete(ip);
         removedCount++;
-      } else if (active.length !== hits.length) {
-        map.set(ip, active);
       }
     }
     return removedCount;
@@ -133,12 +133,19 @@ async function startServer() {
         lastPruneTime = now;
       }
 
-      const hits = (ipHits.get(ip) || []).filter((t) => now - t < windowMs);
+      let hits = ipHits.get(ip);
+      if (!hits) {
+        hits = [];
+        ipHits.set(ip, hits);
+      } else {
+        while (hits.length > 0 && now - hits[0] >= windowMs) {
+          hits.shift();
+        }
+      }
       if (hits.length >= max) {
         return res.status(429).json({ error: 'Terlalu banyak permintaan. Coba lagi sebentar lagi.' });
       }
       hits.push(now);
-      ipHits.set(ip, hits);
       next();
     };
   }
@@ -743,6 +750,17 @@ function ensurePromptTemplateFile(): void {
     updatedAt: string;
   }
 
+  const leadingPatternCache = new Map<string, RegExp>();
+  function getLeadingPattern(dirName: string): RegExp {
+    let cached = leadingPatternCache.get(dirName);
+    if (!cached) {
+      const escaped = dirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      cached = new RegExp(`^/(?:${escaped}|Novel_Library)/`);
+      leadingPatternCache.set(dirName, cached);
+    }
+    return cached;
+  }
+
   // Helper: Resolve existing novel directory on disk to prevent duplicates
   const resolveNovelFolderOnDisk = (libraryBase: string, novel: { id: string; judul: string; folder_path?: string }): string => {
     // 1. If novel.folder_path points to an existing directory inside libraryBase, use it
@@ -751,8 +769,7 @@ function ensurePromptTemplateFile(): void {
       // These are client-generated paths that look absolute but are meant relative to project root
       let normalizedPath = novel.folder_path;
       const libraryDirName = path.basename(libraryBase);
-      const escapedDir = libraryDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const leadingPattern = new RegExp(`^/(?:${escapedDir}|Novel_Library)/`);
+      const leadingPattern = getLeadingPattern(libraryDirName);
       if (leadingPattern.test(normalizedPath)) {
         normalizedPath = normalizedPath.replace(/^\/[^/]+\//, ''); // Strip leading directory segment to make relative
       }
@@ -1340,8 +1357,7 @@ function ensurePromptTemplateFile(): void {
         // Normalize legacy leading-slash relative folder_path (e.g. '/Novel_Library/X' → resolved absolute)
         if (novel.folder_path) {
           const libraryDirName = path.basename(libraryBase);
-          const escapedDir = libraryDirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const leadingPattern = new RegExp(`^/(?:${escapedDir}|Novel_Library)/`);
+          const leadingPattern = getLeadingPattern(libraryDirName);
           if (leadingPattern.test(novel.folder_path)) {
             novel.folder_path = path.resolve(libraryBase, novel.folder_path.replace(/^\/[^/]+\//, ''));
           }
