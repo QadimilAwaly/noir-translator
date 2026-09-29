@@ -66,22 +66,16 @@ async function startServer() {
   ensurePromptTemplateFile();
 
   // Security headers (audit #9, #20)
+  const CSP_VALUE = isProduction
+    ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://openrouter.ai https://generativelanguage.googleapis.com; font-src 'self' data:"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: http: https:; font-src 'self' data:";
+
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
     // Dev mode (Vite) butuh inline script + websocket HMR; production memakai CSP ketat
-    if (isProduction) {
-      res.setHeader(
-        'Content-Security-Policy',
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://openrouter.ai https://generativelanguage.googleapis.com; font-src 'self' data:"
-      );
-    } else {
-      res.setHeader(
-        'Content-Security-Policy',
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: http: https:; font-src 'self' data:"
-      );
-    }
+    res.setHeader('Content-Security-Policy', CSP_VALUE);
     next();
   });
 
@@ -89,7 +83,7 @@ async function startServer() {
   app.use('/api/export-novel', express.json({ limit: '10mb' }));
   app.use('/api/import-novel-folder', express.json({ limit: '10mb' }));
   // Regular endpoints receive tighter 2mb payload limit
-  app.use(express.json({ limit: '2mb' }));
+  app.use('/api', express.json({ limit: '2mb' }));
 
   // Optional API token auth — aktif hanya jika env APP_API_TOKEN diset (audit #4)
   const API_TOKEN = process.env.APP_API_TOKEN;
