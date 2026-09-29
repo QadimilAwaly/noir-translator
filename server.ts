@@ -647,7 +647,7 @@ function ensurePromptTemplateFile(): void {
 
   // Helper: Read/Write App Config File (config.json)
   const CONFIG_PATH = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.json');
-
+  const DEFAULT_GLOBAL_STORAGE_PATH = process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || path.join(process.cwd(), 'Novel_Library');
   interface AppConfig {
     global_storage_path: string;
     default_provider: string;
@@ -660,7 +660,7 @@ function ensurePromptTemplateFile(): void {
   }
 
   const getDefaultConfig = (): AppConfig => ({
-    global_storage_path: process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || path.join(process.cwd(), 'Novel_Library'),
+    global_storage_path: DEFAULT_GLOBAL_STORAGE_PATH,
     default_provider: process.env.DEFAULT_PROVIDER || 'gemini',
     default_model: process.env.DEFAULT_MODEL || process.env.DEFAULT_GEMINI_MODEL || 'gemini-2.5-flash',
     default_openrouter_model: process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash',
@@ -1399,14 +1399,14 @@ function ensurePromptTemplateFile(): void {
             reference_items: novelRefs,
             updated_at: new Date().toISOString(),
           };
-          asyncWritePromises.push(fs.promises.writeFile(refPath, JSON.stringify(refPayload, null, 2), 'utf-8'));
+          asyncWritePromises.push(fs.promises.writeFile(refPath, JSON.stringify(refPayload), 'utf-8'));
         }
 
         // 5. Dirty check glossaries: in-memory check first to short-circuit disk stat
         const isGlossDirty = (Array.isArray(data.glossaries) && !areGlossariesEqual(prevGloss, novelGloss)) || !fs.existsSync(glossPath);
         if (isGlossDirty) {
           hasChanges = true;
-          asyncWritePromises.push(fs.promises.writeFile(glossPath, JSON.stringify(novelGloss, null, 2), 'utf-8'));
+          asyncWritePromises.push(fs.promises.writeFile(glossPath, JSON.stringify(novelGloss), 'utf-8'));
         }
 
         // 6. Dirty check chapters: only write modified chapters (skip identical files)
@@ -1444,7 +1444,7 @@ function ensurePromptTemplateFile(): void {
         novels: newNovels,
         last_updated: updated.last_updated,
       };
-      await fs.promises.writeFile(filePath, JSON.stringify(manifest, null, 2), 'utf-8');
+      await fs.promises.writeFile(filePath, JSON.stringify(manifest), 'utf-8');
     }
 
     invalidateLibraryCache();
