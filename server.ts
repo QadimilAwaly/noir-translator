@@ -1,3 +1,9 @@
+import v8 from 'v8';
+try {
+  v8.setFlagsFromString('--optimize_for_size');
+} catch {
+  // ignore
+}
 import express from 'express';
 import path from 'path';
 import fs from 'fs';

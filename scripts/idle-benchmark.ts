@@ -106,7 +106,7 @@ async function run() {
 
 
   // 2. Launch server
-  const server = spawn('node', ['--expose-gc', 'dist/server.js'], {
+  const server = spawn('node', ['--optimize-for-size', '--max-semi-space-size=2', '--max-old-space-size=64', 'dist/server.js'], {
     env: TEST_ENV,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
