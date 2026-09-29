@@ -624,11 +624,20 @@ function ensurePromptTemplateFile(): void {
     openrouter_api_key: process.env.OPENROUTER_API_KEY || '',
   });
 
+  let cachedConfig: Record<string, any> | null = null;
+  let cachedConfigMtime = 0;
+
   const readConfig = () => {
     try {
       if (fs.existsSync(CONFIG_PATH)) {
+        const stat = fs.statSync(CONFIG_PATH);
+        if (cachedConfig && cachedConfigMtime === stat.mtimeMs) {
+          return cachedConfig;
+        }
         const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
-        return { ...getDefaultConfig(), ...JSON.parse(raw) };
+        cachedConfig = { ...getDefaultConfig(), ...JSON.parse(raw) };
+        cachedConfigMtime = stat.mtimeMs;
+        return cachedConfig;
       }
     } catch (e) {
       console.error('Error reading config.json:', e);
@@ -639,6 +648,7 @@ function ensurePromptTemplateFile(): void {
     } catch (e) {
       console.warn('[config] Failed to write default config:', e);
     }
+    cachedConfig = def;
     return def;
   };
 
@@ -1382,6 +1392,8 @@ function ensurePromptTemplateFile(): void {
       if (body.gemini_api_key !== undefined) updated.gemini_api_key = String(body.gemini_api_key);
       if (body.openrouter_api_key !== undefined) updated.openrouter_api_key = String(body.openrouter_api_key);
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf-8');
+      cachedConfig = null;
+      cachedConfigMtime = 0;
       res.json({ status: 'success', config: getSafeConfig() });
     } catch (error: unknown) {
       const errMessage = error instanceof Error ? error.message : 'Gagal menyimpan config.json';
