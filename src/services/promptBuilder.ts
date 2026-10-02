@@ -55,7 +55,7 @@ export function buildTranslateUserPrompt({
 }): string {
   const sourceTag = getSourceTag(bahasa_sumber);
   return `[JUDUL NOVEL]
-${makeDataSection('JUDUL_NOVEL', judul_novel || 'Novel')} - Chapter ${nomor_chapter || 1}
+${makeDataSection('JUDUL_NOVEL', judul_novel || 'Novel')} - Chapter ${nomor_chapter ?? 1}
 
 [PANDUAN GAYA BAHASA]
 ${makeDataSection('GAYA_BAHASA', refStyle)}
