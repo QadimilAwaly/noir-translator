@@ -15,26 +15,33 @@ const EXT_REGEX = /\.(md|txt)$/i;
 const NUMBER_PATTERN = '\\d{1,5}(?:\\.\\d{1,4})?';
 const PREFIX_REGEX = new RegExp(`(?:^|[_\-\\s])(?:Chapter|chap|Bab|bab)[_\\-\\s]*(${NUMBER_PATTERN})(?:[_\-\\s].*)?$`, 'i');
 const NUMBER_ONLY_REGEX = new RegExp(`^${NUMBER_PATTERN}$`);
+const extractChapterCache = new Map<string, number | null>();
 
 export function extractChapterNumber(filename: string): number | null {
+  if (!filename) return null;
+  const cached = extractChapterCache.get(filename);
+  if (cached !== undefined) return cached;
+
   // Strip extension
   const base = filename.replace(EXT_REGEX, '');
+
+  let result: number | null = null;
 
   // Strategy 1: explicit chapter prefix (Chapter|chap|Bab|bab) followed by number
   const prefixMatch = base.match(PREFIX_REGEX);
   if (prefixMatch) {
     const n = parseFloat(prefixMatch[1]);
-    if (!isNaN(n) && n >= 0 && n <= 99999) return n;
-    return null;
-  }
-
-  // Strategy 2: filename is entirely number (e.g. 0.md, 01.md, 1.5.txt)
-  if (NUMBER_ONLY_REGEX.test(base)) {
+    if (!isNaN(n) && n >= 0 && n <= 99999) result = n;
+  } else if (NUMBER_ONLY_REGEX.test(base)) {
+    // Strategy 2: filename is entirely number (e.g. 0.md, 01.md, 1.5.txt)
     const n = parseFloat(base);
-    if (!isNaN(n) && n >= 0 && n <= 99999) return n;
+    if (!isNaN(n) && n >= 0 && n <= 99999) result = n;
   }
 
-  return null;
+  if (extractChapterCache.size < 2000) {
+    extractChapterCache.set(filename, result);
+  }
+  return result;
 }
 
 /**
@@ -63,6 +70,9 @@ export function formatChapterFilenameNumber(num: number): string {
  * Correctly orders 0 before 1, and decimal extra chapters (e.g. 1, 1.5, 2).
  */
 export function compareChapterNumbers(a: number | string | undefined, b: number | string | undefined): number {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b;
+  }
   const numA = typeof a === 'number' ? a : parseFloat(String(a ?? 0));
   const numB = typeof b === 'number' ? b : parseFloat(String(b ?? 0));
   const validA = isNaN(numA) ? 0 : numA;

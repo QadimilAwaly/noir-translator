@@ -99,8 +99,18 @@ const WORD_CHAR_UNICODE_REGEX = /[\p{L}\p{N}]/u;
 const UNICODE_LETTER_REGEX = /\p{L}/u;
 
 function isWordCharCode(code: number): boolean {
-  if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) return true;
+  if (code === 0) return false;
+  if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57) || (code >= 65 && code <= 90)) return true;
   if (code < 128) return false;
+  // Fast path common CJK unified ideographs, Extension A, Kana, and Hangul
+  if (
+    (code >= 0x4e00 && code <= 0x9fa5) ||
+    (code >= 0x3040 && code <= 0x30ff) ||
+    (code >= 0xac00 && code <= 0xd7af) ||
+    (code >= 0x3400 && code <= 0x4dbf)
+  ) {
+    return true;
+  }
   return WORD_CHAR_UNICODE_REGEX.test(String.fromCharCode(code));
 }
 

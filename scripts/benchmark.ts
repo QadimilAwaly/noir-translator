@@ -58,6 +58,14 @@ const MOCK_CHAPTERS = [
 
 // Helper: robust JSON extractor matching server.ts cleanJsonString
 function extractCleanJson<T = unknown>(input: string): T {
+  const trimmed = input.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      // Fall through to scanner
+    }
+  }
   const firstBrace = input.indexOf('{');
   const firstBracket = input.indexOf('[');
 
