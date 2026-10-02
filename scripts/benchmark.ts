@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { filterRelevantGlossaries, filterRelevantReferences, getKeywordsForMatching } from '../src/services/contextFilter';
 import { buildTranslateUserPrompt, makeDataSection, renderPromptTemplate, PROMPT_INJECTION_GUARD } from '../src/services/promptBuilder';
-import { extractChapterNumber } from '../src/services/chapterParser';
+import { extractChapterNumber, compareChapterNumbers, formatChapterFilenameNumber } from '../src/services/chapterParser';
 import { GlossaryItem, ReferenceItem } from '../src/types';
 
 // Deterministic test data fixtures
@@ -118,8 +118,16 @@ function extractCleanJson<T = unknown>(input: string): T {
 }
 
 async function runBenchmark() {
-  const ITERATIONS = 120;
+  // JIT warm-up to ensure stable, noise-free measurements across runs
+  for (let w = 0; w < 20; w++) {
+    const ch = MOCK_CHAPTERS[w % MOCK_CHAPTERS.length];
+    filterRelevantGlossaries(ch.teks, MOCK_GLOSSARY);
+    filterRelevantReferences(ch.teks, MOCK_REFERENCES);
+    extractCleanJson('{"terms": [{"istilah_asli": "A", "istilah_terjemahan": "B"}]}');
+    extractChapterNumber('Chapter_01.5.md');
+  }
 
+  const ITERATIONS = 150;
   // 1. Benchmark: Context Filtering & Matching (Pipeline Efficiency)
   const tContextStart = performance.now();
   let contextMatchCount = 0;
@@ -201,9 +209,11 @@ Aturan: Gunakan sudut pandang konsisten.`;
     // Initial write
     const chaptersState: Record<number, string> = {};
     for (let c = 1; c <= 15; c++) {
-      const content = `Content for chapter ${c} of benchmark`;
-      chaptersState[c] = content;
-      fs.writeFileSync(path.join(novelFolder, `Chapter_${String(c).padStart(2, '0')}.md`), content, 'utf-8');
+      const num = c === 1 ? 0 : c === 2 ? 0.5 : c;
+      const pad = formatChapterFilenameNumber(num);
+      const content = `# Chapter ${num}: Bab ${num}\n\n> **Novel:** Bench Novel\n> **Status:** Selesai\n\n---\n\n## Hasil Terjemahan (Indonesia)\nHasil terjemahan untuk bab ${num}.\n\n---\n\n## Teks Asli (Mandarin)\nTeks asli untuk bab ${num}.\n`;
+      chaptersState[num] = content;
+      fs.writeFileSync(path.join(novelFolder, `Chapter_${pad}.md`), content, 'utf-8');
       fileWriteOps++;
     }
 
@@ -213,14 +223,24 @@ Aturan: Gunakan sudut pandang konsisten.`;
 
     // Granular sync simulation: modify only 1 chapter out of 15 over multiple sync ticks
     for (let syncTick = 0; syncTick < 40; syncTick++) {
-      const targetChapter = (syncTick % 15) + 1;
-      const newContent = `Updated content for chapter ${targetChapter} at tick ${syncTick}`;
+      const targetChapter = syncTick % 15;
+      const pad = formatChapterFilenameNumber(targetChapter);
+      const newContent = `# Chapter ${targetChapter}: Bab ${targetChapter}\n\n> **Status:** Selesai\n\n---\n\n## Hasil Terjemahan\nUpdated at tick ${syncTick}\n\n---\n\n## Teks Asli\nOriginal text\n`;
 
       // Dirty check: only write if changed
       if (chaptersState[targetChapter] !== newContent) {
-        fs.writeFileSync(path.join(novelFolder, `Chapter_${String(targetChapter).padStart(2, '0')}.md`), newContent, 'utf-8');
+        fs.writeFileSync(path.join(novelFolder, `Chapter_${pad}.md`), newContent, 'utf-8');
         chaptersState[targetChapter] = newContent;
         fileWriteOps++;
+      }
+    }
+
+    // Disk Read & Parse simulation (measuring readLibraryStorage file parsing latency)
+    const readFiles = fs.readdirSync(novelFolder);
+    for (const rf of readFiles) {
+      if (rf.endsWith('.md')) {
+        const raw = fs.readFileSync(path.join(novelFolder, rf), 'utf-8');
+        extractChapterNumber(rf);
       }
     }
   } finally {
@@ -232,6 +252,31 @@ Aturan: Gunakan sudut pandang konsisten.`;
   }
   const storageEfficiencyTime = performance.now() - tStorageStart;
 
+  // 5. Benchmark: Chapter Parsing & Sorting Operations (Chapter Ops)
+  const tChapterStart = performance.now();
+  let chapterOpsCount = 0;
+  const sampleFilenames = [
+    'Chapter_00.md',
+    'Chapter_00.5.md',
+    'Chapter_01.md',
+    'Chapter_01.5.md',
+    'Chapter_02.md',
+    'Chapter_10.5.md',
+    'Bab 12 - Pertempuran Sengit.txt',
+    '05_Penyelidikan.md',
+    'Chapter_100.md',
+    'metadata.json',
+  ];
+  for (let i = 0; i < ITERATIONS * 4; i++) {
+    const nums: number[] = [];
+    for (const fn of sampleFilenames) {
+      const n = extractChapterNumber(fn);
+      if (n !== null) nums.push(n);
+    }
+    nums.sort(compareChapterNumbers);
+    chapterOpsCount += nums.length;
+  }
+  const chapterOpsTime = performance.now() - tChapterStart;
   // 5. Benchmark: User Control & Config Management (User Control)
   const tControlStart = performance.now();
   let configChecks = 0;
@@ -247,7 +292,13 @@ Aturan: Gunakan sudut pandang konsisten.`;
   const userControlTime = performance.now() - tControlStart;
 
   // Total Pipeline Latency
-  const totalPipelineTime = contextPipelineTime + promptPipelineTime + errorHandlingTime + storageEfficiencyTime + userControlTime;
+  const totalPipelineTime =
+    contextPipelineTime +
+    promptPipelineTime +
+    errorHandlingTime +
+    storageEfficiencyTime +
+    chapterOpsTime +
+    userControlTime;
 
   // Print METRICS
   console.log(`METRIC pipeline_latency_ms=${totalPipelineTime.toFixed(2)}`);
@@ -255,10 +306,10 @@ Aturan: Gunakan sudut pandang konsisten.`;
   console.log(`METRIC context_pipeline_ms=${contextPipelineTime.toFixed(2)}`);
   console.log(`METRIC prompt_pipeline_ms=${promptPipelineTime.toFixed(2)}`);
   console.log(`METRIC error_handling_ms=${errorHandlingTime.toFixed(2)}`);
+  console.log(`METRIC chapter_ops_ms=${chapterOpsTime.toFixed(2)}`);
   console.log(`METRIC user_control_ms=${userControlTime.toFixed(2)}`);
   console.log(`METRIC storage_write_ops=${fileWriteOps}`);
 }
-
 runBenchmark().catch((err) => {
   console.error('Benchmark failed:', err);
   process.exit(1);
