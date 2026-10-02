@@ -172,7 +172,7 @@ async function startServer() {
   const VALID_MODEL_ID_REGEX = /^[a-zA-Z0-9._\/-]{1,100}$/;
   const FENCE_CODEBLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)\s*```/i;
   const TRAILING_COMMA_REGEX = /,\s*([\]}])/g;
-  const CHAPTER_TITLE_REGEX = /^#\s+(?:Chapter|Bab)\s+\d+[:\s\-]*(.+)$/m;
+  const CHAPTER_TITLE_REGEX = /^#\s+(?:Chapter|Bab)\s+\d+(?:\.\d+)?[:\s\-]*(.+)$/m;
   const CHAPTER_STATUS_REGEX = />\s*\*\*Status:\*\*\s*(.+)$/m;
   const CHAPTER_TRANS_REGEX = /## Hasil Terjemahan[^\n]*\n([\s\S]*?)(?:\n---|\n## Teks Asli|$)/;
   const CHAPTER_ORIG_REGEX = /## Teks Asli[^\n]*\n([\s\S]*?)(?:\n---|$)/;
@@ -1472,8 +1472,19 @@ function ensurePromptTemplateFile(): void {
       await fs.promises.writeFile(filePath, JSON.stringify(manifest), 'utf-8');
     }
 
-    invalidateLibraryCache();
-    return updated;
+    if (hasChanges) {
+      try {
+        const filePath = getLibraryIndexFilePath();
+        if (fs.existsSync(filePath)) {
+          cachedLibraryIndexMtime = fs.statSync(filePath).mtimeMs;
+        }
+        cachedLibraryData = updated;
+      } catch {
+        invalidateLibraryCache();
+      }
+    } else {
+      cachedLibraryData = updated;
+    }
   };
 
   // API Route: Health Check
