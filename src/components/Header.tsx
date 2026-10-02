@@ -13,7 +13,6 @@ interface HeaderProps {
   onOpenModelSettingsModal: () => void;
   onUpdateNovelLanguages?: (source: LanguageCode, target: LanguageCode) => void;
   onSelectFolderForActiveNovel?: () => void;
-  onReExportNovelToLocal?: () => void;
   onReloadFromDisk?: () => void;
   isLeftSidebarOpen?: boolean;
   isRightPanelOpen?: boolean;
@@ -31,7 +30,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenModelSettingsModal,
   onUpdateNovelLanguages,
   onSelectFolderForActiveNovel,
-  onReExportNovelToLocal,
   onReloadFromDisk,
   isLeftSidebarOpen = true,
   isRightPanelOpen = true,
@@ -190,17 +188,6 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Re-export / Re-extract Entire Novel to Local Storage Button */}
-        {activeNovel && (
-          <button
-            onClick={onReExportNovelToLocal}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1F2229] hover:bg-gray-800 text-gray-200 hover:text-white border border-gray-700/80 rounded-md text-xs font-medium transition-all shadow-sm active:scale-[0.98]"
-            title="Ekstrak ulang seluruh novel & metadata ke folder fisik lokal komputer"
-          >
-            <FolderDown className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">Re-Ekstrak ke Lokal</span>
-          </button>
-        )}
         {/* Right Panel Toggle Button */}
         {onToggleRightPanel && (
           <button

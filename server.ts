@@ -12,7 +12,7 @@ import http from 'http';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { makeDataSection, PROMPT_INJECTION_GUARD, buildTranslateUserPrompt } from './src/services/promptBuilder';
-import { extractChapterNumber } from './src/services/chapterParser';
+import { extractChapterNumber, formatChapterFilenameNumber, compareChapterNumbers } from './src/services/chapterParser';
 // Zero-overhead environment loader (.env.local has precedence over .env)
 function loadEnvFile(filepath: string): void {
   try {
@@ -972,8 +972,7 @@ function ensurePromptTemplateFile(): void {
         console.error(`Error reading chapters from ${folderPath}:`, err);
       }
     }
-
-    chapters.sort((a, b) => a.nomor_chapter - b.nomor_chapter);
+    chapters.sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
     return { chapters, references, glossaries };
   };
 
@@ -1410,20 +1409,46 @@ function ensurePromptTemplateFile(): void {
         }
 
         // 6. Dirty check chapters: only write modified chapters (skip identical files)
+        // 6. Dirty check chapters: write modified chapters and unlink removed/renamed files
         if (Array.isArray(data.chapters)) {
           const safeNovelJudul = sanitizeFilename(novel.judul);
+          const activeFileNames = new Set<string>();
+
           for (const chap of novelChaps) {
-            const num = Number(chap.nomor_chapter) || 1;
-            const padNum = num < 10 ? '0' + num : String(num);
-            const safeChapTitle = sanitizeFilename(chap.judul_chapter || 'Chapter ' + chap.nomor_chapter);
-            const chapPath = path.join(novelFolder, `Chapter_${padNum}.md`);
+            const num = typeof chap.nomor_chapter === 'number' ? chap.nomor_chapter : parseFloat(String(chap.nomor_chapter ?? 0));
+            const validNum = isNaN(num) ? 0 : num;
+            const padNum = formatChapterFilenameNumber(validNum);
+            const fileName = `Chapter_${padNum}.md`;
+            activeFileNames.add(fileName);
+
+            const safeChapTitle = sanitizeFilename(chap.judul_chapter || 'Chapter ' + validNum);
+            const chapPath = path.join(novelFolder, fileName);
             const prevChap = currentChapMap.get(chap.id);
 
             if (isChapterDirty(prevChap, chap) || !fs.existsSync(chapPath)) {
               hasChanges = true;
               const divider = '---';
-              const mdContent = `# Chapter ${chap.nomor_chapter}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
+              const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
               asyncWritePromises.push(fs.promises.writeFile(chapPath, mdContent, 'utf-8'));
+            }
+          }
+
+          // Clean up orphaned or renamed chapter files on disk
+          if (fs.existsSync(novelFolder)) {
+            try {
+              const existingFiles = fs.readdirSync(novelFolder);
+              for (const file of existingFiles) {
+                if (file.startsWith('Chapter_') && file.endsWith('.md') && !activeFileNames.has(file)) {
+                  try {
+                    fs.unlinkSync(path.join(novelFolder, file));
+                    hasChanges = true;
+                  } catch (e) {
+                    console.warn('Failed unlinking orphaned chapter file:', file, e);
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('Error reading novel folder for chapter cleanup:', err);
             }
           }
         }
@@ -1631,13 +1656,15 @@ function ensurePromptTemplateFile(): void {
         fs.mkdirSync(targetFolder, { recursive: true });
       }
 
-      const padNum = String(Number(chapter_number) || 1).padStart(2, '0');
-      const safeTitle = sanitizeFilename(chapter_title || 'Bab ' + chapter_number);
+      const num = typeof chapter_number === 'number' ? chapter_number : parseFloat(String(chapter_number ?? 0));
+      const validNum = isNaN(num) ? 0 : num;
+      const padNum = formatChapterFilenameNumber(validNum);
+      const safeTitle = sanitizeFilename(chapter_title || 'Bab ' + validNum);
       const fileName = `Chapter_${padNum}.md`;
       const filePath = path.join(targetFolder, fileName);
 
       const divider = '---';
-      const mdContent = `# Chapter ${chapter_number}: ${safeTitle}\n\n> **Novel:** ${sanitizeFilename(novel_title || 'Novel')}\n> **Bahasa:** ${source_lang || 'Asli'} -> ${target_lang || 'Target'}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${target_lang || 'Target'})\n\n${translated_text || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${source_lang || 'Asli'})\n\n${original_text || '*(Kosong)*'}\n`;
+      const mdContent = `# Chapter ${validNum}: ${safeTitle}\n\n> **Novel:** ${sanitizeFilename(novel_title || 'Novel')}\n> **Bahasa:** ${source_lang || 'Asli'} -> ${target_lang || 'Target'}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${target_lang || 'Target'})\n\n${translated_text || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${source_lang || 'Asli'})\n\n${original_text || '*(Kosong)*'}\n`;
 
       fs.writeFileSync(filePath, mdContent, 'utf-8');
       invalidateLibraryCache();

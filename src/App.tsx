@@ -11,7 +11,6 @@ import {
 import { translateChapterApi, extractGlossaryApi, authHeaders } from './services/api';
 import { filterRelevantGlossaries, filterRelevantReferences } from './services/contextFilter';
 import { exportNovelAsFolderZip } from './services/exportZip';
-import { setNovelDirHandle, saveNovelToLocalFS, requestFolderPicker, removeNovelDirHandle } from './services/fileSystemStorage';
 import { useLibrary } from './hooks/useLibrary';
 import { useChapterEditor } from './hooks/useChapterEditor';
 import { Header } from './components/Header';
@@ -231,173 +230,6 @@ export default function App() {
     if (!activeNovelId) return;
     chapterEditor.reloadFromServer(activeNovelId);
   }, [activeNovelId]);
-
-  // Auto-Save active novel to Local File System if folder handle is attached
-  const syncToLocalFS = async () => {
-    if (!activeNovel) return;
-    const success = await saveNovelToLocalFS(
-      activeNovel,
-      chapters,
-      references,
-      glossaries,
-      synopsis,
-      writingStyle
-    );
-    if (success) {
-      console.log(`[Auto-Save FS] Synchronized novel "${activeNovel.judul}" to local folder.`);
-    }
-  };
-
-  useEffect(() => {
-    if (activeNovel && chapters.length > 0) {
-      // Debounce auto-save 800ms untuk mencegah tumpukan write saat user mengetik (audit #17)
-      const t = setTimeout(() => syncToLocalFS(), 800);
-      return () => clearTimeout(t);
-    }
-  }, [chapters, references, glossaries, synopsis, writingStyle]);
-
-  const handleSelectFolderForActiveNovel = async () => {
-    if (!activeNovel) return;
-    if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
-      const handle = await requestFolderPicker();
-      if (handle) {
-        setNovelDirHandle(activeNovel.id, handle);
-        library.updateNovel(activeNovel.id, { folder_path: `[Lokal] ${handle.name}` });
-        await saveNovelToLocalFS(activeNovel, chapters, references, glossaries, synopsis, writingStyle, handle);
-        showToast(`Folder penyimpanan fisik dihubungkan ke "${handle.name}".`);
-      }
-    } else {
-      setIsExportModalOpen(true);
-    }
-  };
-
-  // Handler: Re-export / Re-extract Entire Novel to Local Storage
-  const handleReExportNovelToLocal = async () => {
-    if (!activeNovel) return;
-    try {
-      const fsSuccess = await saveNovelToLocalFS(
-        activeNovel,
-        chapters,
-        references,
-        glossaries,
-        synopsis,
-        writingStyle
-      );
-
-      const res = await fetch('/api/export-novel', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          novel: activeNovel,
-          chapters,
-          references,
-          glossaries,
-          synopsis,
-          writing_style: writingStyle,
-        }),
-      });
-
-      if (res.ok || fsSuccess) {
-        showToast(`Seluruh novel (${chapters.length} bab) berhasil di-ekstrak ulang ke folder lokal!`);
-      } else {
-        const errData = (await res.json().catch(() => ({}))) as { error?: string };
-        showToast(`Gagal re-ekstrak novel: ${errData.error || 'Server menolak permintaan'}`);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal mengekstrak novel';
-      console.error('Error re-exporting novel:', err);
-      showToast(`Terjadi kesalahan: ${message}`);
-    }
-  };
-
-  // Handler: Import & Merge Existing Local Novel Folder
-  const handleImportNovelFolder = async () => {
-    const inputPath = prompt(
-      'Masukkan path folder fisik novel yang ingin di-import / di-merge (misal: E:\\Novel_Library\\The_Executed_Duke atau /Users/nama/Novels/The_Executed_Duke):'
-    );
-    if (!inputPath || !inputPath.trim()) return;
-
-    try {
-      const res = await fetch('/api/import-novel-folder', {
-        method: 'POST',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ folder_path: inputPath.trim() }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.status) {
-        alert(`Gagal mengimpor folder: ${data.error || 'Folder tidak dapat dibaca'}`);
-        return;
-      }
-
-      const existingNovel = novels.find((n) => n.judul.toLowerCase() === data.novel_title.toLowerCase());
-      const novelId = existingNovel ? existingNovel.id : `novel-${Date.now()}`;
-
-      const importedNovel: Novel = {
-        id: novelId,
-        judul: data.novel_title,
-        folder_path: data.folder_path,
-        bahasa_sumber: data.source_language || 'Mandarin',
-        bahasa_target: data.target_language || 'Indonesia',
-        createdAt: existingNovel ? existingNovel.createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (existingNovel) {
-        library.updateNovel(novelId, importedNovel);
-      } else {
-        library.addNovel(importedNovel);
-      }
-
-      const allChapters = getStoredChapters().filter((c) => c.novel_id !== novelId);
-      const newChapters: Chapter[] = (data.chapters || []).map((c: any) => ({
-        id: `chap-${novelId}-${c.nomor_chapter}-${Date.now()}`,
-        novel_id: novelId,
-        nomor_chapter: c.nomor_chapter,
-        judul_chapter: c.judul_chapter,
-        teks_asli: c.teks_asli,
-        teks_terjemahan: c.teks_terjemahan,
-        status_pengerjaan: c.status_pengerjaan || 'Belum',
-        updatedAt: new Date().toISOString(),
-      }));
-
-      saveStoredChapters([...allChapters, ...newChapters]);
-
-      if (Array.isArray(data.reference_items) && data.reference_items.length > 0) {
-        const existingRefs = getStoredReferences(novelId);
-        const newRefs: ReferenceItem[] = data.reference_items.map((r: any) => ({
-          id: `ref-${novelId}-${Date.now()}-${Math.random()}`,
-          novel_id: novelId,
-          kategori: r.kategori || 'Lore',
-          nama_item: r.nama_item || 'Item',
-          deskripsi: r.deskripsi || '',
-        }));
-        saveStoredReferences([...existingRefs, ...newRefs]);
-      }
-
-      if (Array.isArray(data.glossaries) && data.glossaries.length > 0) {
-        const existingGloss = getStoredGlossaries(novelId);
-        const newGloss: GlossaryItem[] = data.glossaries.map((g: any) => ({
-          id: `glos-${novelId}-${Date.now()}-${Math.random()}`,
-          novel_id: novelId,
-          istilah_asli: g.istilah_asli,
-          istilah_terjemahan: g.istilah_terjemahan,
-          kategori: g.kategori || 'Istilah Khusus',
-          chapter_ditemukan: g.chapter_ditemukan || 'Imported',
-          konteks: g.konteks || '',
-        }));
-        saveStoredGlossaries([...existingGloss, ...newGloss]);
-      }
-
-      library.setActiveNovelId(novelId);
-      chapterEditor.reloadFromServer(novelId);
-      showToast(`Berhasil meng-impor/merge "${importedNovel.judul}" (${newChapters.length} bab ditemukan)!`);
-    } catch (err: any) {
-      console.error('Error importing novel folder:', err);
-      showToast(`Gagal mengimpor: ${err.message || 'Kesalahan jaringan'}`);
-    }
-  };
-
   // Helper: Save chapter to local disk via server API (/api/save-chapter)
   const saveChapterToDiskServer = async (chap: Chapter) => {
     if (!activeNovel) return;
@@ -467,10 +299,6 @@ export default function App() {
       updatedAt: new Date().toISOString(),
     };
 
-    if (data.dirHandle) {
-      setNovelDirHandle(newNovel.id, data.dirHandle);
-    }
-
     library.addNovel(newNovel);
     showToast(`Novel "${newNovel.judul}" berhasil dibuat.`);
   };
@@ -481,7 +309,6 @@ export default function App() {
     if (!confirm('Apakah Anda yakin ingin menghapus novel ini beserta seluruh bab dan glosariumnya?')) return;
 
     library.removeNovel(id);
-    removeNovelDirHandle(id);
     showToast('Novel dan foldernya di disk berhasil dihapus.');
   };
 
@@ -491,10 +318,21 @@ export default function App() {
     showToast('Judul novel dan folder di disk berhasil diperbarui.');
   };
 
+  // Handler: Update Chapter Number & Title
+  const handleUpdateChapterMeta = (id: string, patch: { nomor_chapter?: number; judul_chapter?: string }) => {
+    const updated = chapterEditor.updateChapterMeta(id, patch, activeNovelId || undefined);
+    if (updated) {
+      saveChapterToDiskServer(updated);
+    }
+    showToast('Nomor dan judul bab berhasil diperbarui.');
+  };
+
   // Handler: Rename Chapter
-  const handleRenameChapter = (id: string, newTitle: string) => {
-    chapterEditor.renameChapter(id, newTitle, activeNovelId || undefined);
-    showToast('Judul bab berhasil diperbarui.');
+  const handleRenameChapter = (id: string, newTitle: string, newNumber?: number) => {
+    handleUpdateChapterMeta(id, {
+      judul_chapter: newTitle,
+      ...(newNumber !== undefined ? { nomor_chapter: newNumber } : {}),
+    });
   };
 
   // Handler: Create New Chapter
@@ -506,34 +344,6 @@ export default function App() {
     if (!activeNovelId) return;
     const newChapter = chapterEditor.createChapter(activeNovelId, data);
     showToast(`Bab ${newChapter.nomor_chapter} berhasil ditambahkan.`);
-  };
-
-  // Handler: Import Chapter from File (.txt or .md)
-  const handleImportChapterFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!activeNovelId || !e.target.files || e.target.files.length === 0) return;
-
-    const file = e.target.files[0];
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('File terlalu besar (maks 5MB).');
-      if (e.target) e.target.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (!content) return;
-
-      const chapterName = file.name.replace(/\.[^/.]+$/, '');
-      const nextNum = chapters.length + 1;
-
-      handleCreateChapter({
-        nomor_chapter: nextNum,
-        judul_chapter: chapterName,
-        teks_asli: content,
-      });
-    };
-    reader.readAsText(file);
   };
 
   // Handler: Delete Chapter
@@ -755,8 +565,6 @@ export default function App() {
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenModelSettingsModal={() => setIsModelSettingsModalOpen(true)}
         onUpdateNovelLanguages={handleUpdateNovelLanguages}
-        onSelectFolderForActiveNovel={handleSelectFolderForActiveNovel}
-        onReExportNovelToLocal={handleReExportNovelToLocal}
         onReloadFromDisk={async () => {
           const serverData = await reloadLibraryFromDisk(undefined, { force: true });
           if (serverData && activeNovelId) {
@@ -791,12 +599,10 @@ export default function App() {
               activeChapterId={activeChapterId}
               onSelectChapter={handleSelectChapter}
               onAddChapter={() => setIsNewChapterModalOpen(true)}
-              onImportChapterFile={handleImportChapterFile}
               onDeleteChapter={handleDeleteChapter}
               onDeleteNovel={handleDeleteNovel}
               onRenameNovel={handleRenameNovel}
               onRenameChapter={handleRenameChapter}
-              onImportNovelFolder={handleImportNovelFolder}
               onAddNovel={() => setIsNewNovelModalOpen(true)}
               onClose={() => setIsLeftSidebarOpen(false)}
             />
@@ -811,6 +617,7 @@ export default function App() {
           onUpdateChapterStatus={handleUpdateChapterStatus}
           onTranslateChapter={handleTranslateChapter}
           onExtractGlossary={handleExtractGlossary}
+          onUpdateChapterMeta={handleUpdateChapterMeta}
           onUpdateNovelLanguages={handleUpdateNovelLanguages}
           onAddNovel={() => setIsNewNovelModalOpen(true)}
           onAddChapter={() => setIsNewChapterModalOpen(true)}
@@ -858,7 +665,7 @@ export default function App() {
       <NewChapterModal
         isOpen={isNewChapterModalOpen}
         onClose={() => setIsNewChapterModalOpen(false)}
-        nextChapterNumber={chapters.length + 1}
+        nextChapterNumber={chapters.length > 0 ? Math.floor(Math.max(...chapters.map((c) => c.nomor_chapter || 0))) + 1 : 1}
         onCreateChapter={handleCreateChapter}
       />
 

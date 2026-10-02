@@ -13,6 +13,7 @@ import {
   LibraryStorageData,
 } from '../services/storage';
 import { filterRelevantGlossaries, filterRelevantReferences } from '../services/contextFilter';
+import { compareChapterNumbers } from '../services/chapterParser';
 
 export interface PromptStats {
   glossaryCount: number;
@@ -40,6 +41,7 @@ export interface UseChapterEditorReturn {
   updateChapterText: (chapterId: string, original: string, translated: string, novelId?: string) => Chapter | undefined;
   updateChapterStatus: (chapterId: string, status: ChapterStatus, novelId?: string) => void;
   renameChapter: (chapterId: string, newTitle: string, novelId?: string) => void;
+  updateChapterMeta: (chapterId: string, patch: { nomor_chapter?: number; judul_chapter?: string }, novelId?: string) => Chapter | undefined;
   createChapter: (novelId: string, data: { nomor_chapter: number; judul_chapter: string; teks_asli: string }) => Chapter;
   deleteChapter: (chapterId: string, novelId?: string) => Chapter[];
   addGlossaryItem: (novelId: string, item: Omit<GlossaryItem, 'id' | 'novel_id'>) => GlossaryItem;
@@ -82,9 +84,10 @@ export function useChapterEditor(): UseChapterEditorReturn {
 
   const reloadFromServer = useCallback((novelId: string, serverData?: LibraryStorageData | null) => {
     // 1. Chapters
-    const loadedChapters = serverData?.chapters && serverData.chapters.length > 0
+    const rawChapters = serverData?.chapters && serverData.chapters.length > 0
       ? serverData.chapters.filter((c) => c.novel_id === novelId)
       : getStoredChapters(novelId);
+    const loadedChapters = [...rawChapters].sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
     setChapters(loadedChapters);
     if (loadedChapters.length > 0) {
       setActiveChapterId((prev) => (loadedChapters.some((c) => c.id === prev) ? prev : loadedChapters[0].id));
@@ -165,26 +168,52 @@ export function useChapterEditor(): UseChapterEditorReturn {
     }
   }, []);
 
-  const renameChapter = useCallback((chapterId: string, newTitle: string, novelId?: string) => {
-    const trimmed = newTitle.trim();
-    if (!trimmed) return;
+  const updateChapterMeta = useCallback(
+    (
+      chapterId: string,
+      patch: { nomor_chapter?: number; judul_chapter?: string },
+      novelId?: string
+    ): Chapter | undefined => {
+      let updatedChapter: Chapter | undefined;
+      const allChapters = getStoredChapters();
+      const updatedAll = allChapters.map((c) => {
+        if (c.id === chapterId) {
+          updatedChapter = {
+            ...c,
+            nomor_chapter: patch.nomor_chapter !== undefined ? patch.nomor_chapter : c.nomor_chapter,
+            judul_chapter: patch.judul_chapter !== undefined ? patch.judul_chapter.trim() : c.judul_chapter,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedChapter;
+        }
+        return c;
+      });
 
-    const allChapters = getStoredChapters();
-    const updatedAll = allChapters.map((c) => {
-      if (c.id === chapterId) {
-        return { ...c, judul_chapter: trimmed, updatedAt: new Date().toISOString() };
+      saveStoredChapters(updatedAll);
+      const targetId = novelId || (updatedChapter ? (updatedChapter as Chapter).novel_id : undefined);
+      if (targetId) {
+        const activeChapters = updatedAll
+          .filter((c) => c.novel_id === targetId)
+          .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+        setChapters(activeChapters);
+      } else {
+        setChapters((prev) =>
+          prev
+            .map((c) => (c.id === chapterId && updatedChapter ? updatedChapter : c))
+            .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter))
+        );
       }
-      return c;
-    });
+      return updatedChapter;
+    },
+    []
+  );
 
-    saveStoredChapters(updatedAll);
-    if (novelId) {
-      const activeChapters = updatedAll.filter((c) => c.novel_id === novelId);
-      setChapters(activeChapters);
-    } else {
-      setChapters((prev) => prev.map((c) => (c.id === chapterId ? { ...c, judul_chapter: trimmed, updatedAt: new Date().toISOString() } : c)));
-    }
-  }, []);
+  const renameChapter = useCallback(
+    (chapterId: string, newTitle: string, novelId?: string) => {
+      updateChapterMeta(chapterId, { judul_chapter: newTitle }, novelId);
+    },
+    [updateChapterMeta]
+  );
 
   const createChapter = useCallback((novelId: string, data: { nomor_chapter: number; judul_chapter: string; teks_asli: string }): Chapter => {
     const newChapter: Chapter = {
@@ -202,8 +231,9 @@ export function useChapterEditor(): UseChapterEditorReturn {
     const updatedAllChapters = [...allChapters, newChapter];
     saveStoredChapters(updatedAllChapters);
 
-    const activeChapters = updatedAllChapters.filter((c) => c.novel_id === novelId);
-    setChapters(activeChapters);
+    const activeChapters = updatedAllChapters
+      .filter((c) => c.novel_id === novelId)
+      .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
     setActiveChapterId(newChapter.id);
     return newChapter;
   }, []);
@@ -290,6 +320,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
     updateChapterText,
     updateChapterStatus,
     renameChapter,
+    updateChapterMeta,
     createChapter,
     deleteChapter,
     addGlossaryItem,

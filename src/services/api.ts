@@ -1,18 +1,13 @@
 import { TranslateRequest, ExtractGlossaryRequest, ExtractedTerm } from '../types';
 
-const APP_API_TOKEN_KEY = 'nt_app_api_token';
+let memoryApiToken: string | null = null;
 
-export function getApiToken(): string | null {
-  try {
-    return localStorage.getItem(APP_API_TOKEN_KEY);
-  } catch {
-    return null;
-  }
+export function setApiToken(token: string | null): void {
+  memoryApiToken = token;
 }
 
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const t = getApiToken();
-  return t ? { ...extra, 'x-api-token': t } : extra;
+  return memoryApiToken ? { ...extra, 'x-api-token': memoryApiToken } : extra;
 }
 
 export async function translateChapterApi(reqData: TranslateRequest): Promise<{ translatedText: string; suggestedTitle?: string; promptStats?: any }> {

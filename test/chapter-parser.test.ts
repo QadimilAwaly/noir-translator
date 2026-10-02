@@ -10,7 +10,7 @@
 
 import { test, describe } from 'bun:test';
 import assert from 'assert';
-import { extractChapterNumber } from '../src/services/chapterParser';
+import { extractChapterNumber, formatChapterFilenameNumber, compareChapterNumbers } from '../src/services/chapterParser';
 import crypto from 'crypto';
 
 describe('Unit: extractChapterNumber strict filename parsing', () => {
@@ -27,6 +27,22 @@ describe('Unit: extractChapterNumber strict filename parsing', () => {
     assert.equal(extractChapterNumber('01.md'), 1);
     assert.equal(extractChapterNumber('123.txt'), 123);
     assert.equal(extractChapterNumber('0005.md'), 5);
+  });
+  test('Positive: Chapter 0 / prologue support', () => {
+    assert.equal(extractChapterNumber('Chapter_00.md'), 0);
+    assert.equal(extractChapterNumber('Chapter_0.md'), 0);
+    assert.equal(extractChapterNumber('Bab_0.md'), 0);
+    assert.equal(extractChapterNumber('0.md'), 0);
+    assert.equal(extractChapterNumber('00.txt'), 0);
+  });
+
+  test('Positive: Decimal chapter numbers (e.g. 1.5, 0.5, 12.1 for extra chapters)', () => {
+    assert.equal(extractChapterNumber('Chapter_1.5.md'), 1.5);
+    assert.equal(extractChapterNumber('Chapter_01.5.md'), 1.5);
+    assert.equal(extractChapterNumber('Bab_0.5.md'), 0.5);
+    assert.equal(extractChapterNumber('chap-12.1.txt'), 12.1);
+    assert.equal(extractChapterNumber('1.5.md'), 1.5);
+    assert.equal(extractChapterNumber('0.5.txt'), 0.5);
   });
 
   test('Positive: Case insensitivity', () => {
@@ -55,6 +71,30 @@ describe('Unit: extractChapterNumber strict filename parsing', () => {
     assert.equal(extractChapterNumber('Chapter_100000.md'), null, '6-digit number exceeds max range');
     assert.equal(extractChapterNumber('99999.md'), 99999);
     assert.equal(extractChapterNumber('100000.md'), null);
+  });
+});
+
+describe('Unit: formatChapterFilenameNumber and compareChapterNumbers', () => {
+  test('formatChapterFilenameNumber pads integers and formats decimals', () => {
+    assert.equal(formatChapterFilenameNumber(0), '00');
+    assert.equal(formatChapterFilenameNumber(1), '01');
+    assert.equal(formatChapterFilenameNumber(0.5), '00.5');
+    assert.equal(formatChapterFilenameNumber(1.5), '01.5');
+    assert.equal(formatChapterFilenameNumber(9), '09');
+    assert.equal(formatChapterFilenameNumber(10), '10');
+    assert.equal(formatChapterFilenameNumber(12.1), '12.1');
+    assert.equal(formatChapterFilenameNumber(100), '100');
+  });
+
+  test('compareChapterNumbers accurately sorts 0, integers, and decimals', () => {
+    const raw = [2, 0, 1.5, 1, 0.5, 10];
+    const sorted = [...raw].sort(compareChapterNumbers);
+    assert.deepEqual(sorted, [0, 0.5, 1, 1.5, 2, 10]);
+
+    // String numbers
+    const stringNums = ['2', '0', '1.5', '1', '0.5'];
+    const sortedStrings = [...stringNums].sort(compareChapterNumbers);
+    assert.deepEqual(sortedStrings, ['0', '0.5', '1', '1.5', '2']);
   });
 });
 

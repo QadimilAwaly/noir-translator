@@ -165,6 +165,32 @@ describe('Unit: useChapterEditor & isDirty Tracking', () => {
     assert.equal(stats.glossaryCount, 1);
     assert.equal(stats.totalGlossaries, 2);
   });
+  test('updateChapterMeta updates number and title supporting 0 and decimals with correct sorting', () => {
+    const { compareChapterNumbers } = require('../src/services/chapterParser');
+    let chapters: Chapter[] = [
+      { id: 'c1', novel_id: 'n1', nomor_chapter: 1, judul_chapter: 'Chapter 1', teks_asli: '', teks_terjemahan: '', status_pengerjaan: 'Belum', updatedAt: '' },
+      { id: 'c2', novel_id: 'n1', nomor_chapter: 2, judul_chapter: 'Chapter 2', teks_asli: '', teks_terjemahan: '', status_pengerjaan: 'Belum', updatedAt: '' },
+    ];
+
+    const updateMeta = (id: string, patch: { nomor_chapter?: number; judul_chapter?: string }) => {
+      chapters = chapters.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+    };
+
+    // Add an extra chapter 1.5
+    chapters.push({ id: 'c3', novel_id: 'n1', nomor_chapter: 1.5, judul_chapter: 'Side Story', teks_asli: '', teks_terjemahan: '', status_pengerjaan: 'Belum', updatedAt: '' });
+    chapters.sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+    assert.deepEqual(chapters.map((c) => c.nomor_chapter), [1, 1.5, 2]);
+
+    // Add a prologue chapter 0
+    chapters.push({ id: 'c0', novel_id: 'n1', nomor_chapter: 0, judul_chapter: 'Prologue', teks_asli: '', teks_terjemahan: '', status_pengerjaan: 'Belum', updatedAt: '' });
+    chapters.sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+    assert.deepEqual(chapters.map((c) => c.nomor_chapter), [0, 1, 1.5, 2]);
+
+    // Edit chapter 2 to chapter 0.5
+    updateMeta('c2', { nomor_chapter: 0.5, judul_chapter: 'Prequel Part 2' });
+    assert.deepEqual(chapters.map((c) => c.nomor_chapter), [0, 0.5, 1, 1.5]);
+    assert.equal(chapters[1].judul_chapter, 'Prequel Part 2');
+  });
 });
 
 describe('Integration: Window Focus Race Condition & Cooldown Mitigation', () => {

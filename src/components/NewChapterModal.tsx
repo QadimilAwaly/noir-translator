@@ -17,7 +17,7 @@ export const NewChapterModal: React.FC<NewChapterModalProps> = ({
   nextChapterNumber,
   onCreateChapter,
 }) => {
-  const [nomorChapter, setNomorChapter] = useState(nextChapterNumber);
+  const [nomorChapter, setNomorChapter] = useState<number | string>(nextChapterNumber);
   const [judulChapter, setJudulChapter] = useState('');
   const [teksAsli, setTeksAsli] = useState('');
 
@@ -34,14 +34,15 @@ export const NewChapterModal: React.FC<NewChapterModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const finalTitle = judulChapter.trim() || `Bab ${nomorChapter}`;
+    const parsedNum = parseFloat(String(nomorChapter));
+    const validNum = !isNaN(parsedNum) && parsedNum >= 0 ? parsedNum : nextChapterNumber;
+    const finalTitle = judulChapter.trim() || `Bab ${validNum}`;
 
     onCreateChapter({
-      nomor_chapter: Number(nomorChapter) || nextChapterNumber,
+      nomor_chapter: validNum,
       judul_chapter: finalTitle,
       teks_asli: teksAsli,
     });
-
     setJudulChapter('');
     setTeksAsli('');
     onClose();
@@ -69,10 +70,12 @@ export const NewChapterModal: React.FC<NewChapterModalProps> = ({
               <label className="text-gray-300 font-medium">Nomor Bab</label>
               <input
                 type="number"
-                min={1}
+                min={0}
+                step="any"
                 value={nomorChapter}
-                onChange={(e) => setNomorChapter(Number(e.target.value))}
+                onChange={(e) => setNomorChapter(e.target.value)}
                 className="w-full p-2.5 bg-[#0F1113] border border-gray-800 rounded text-gray-100 focus:outline-none focus:border-indigo-500 font-mono"
+                placeholder="0, 1, 1.5..."
                 required
               />
             </div>

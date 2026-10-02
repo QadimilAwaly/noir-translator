@@ -8,6 +8,8 @@ import {
   RefreshCw,
   Eye,
   Edit3,
+  Edit2,
+  X,
   AArrowUp,
   AArrowDown,
   BookMarked,
@@ -17,6 +19,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Chapter, Novel, ChapterStatus, LanguageCode, SUPPORTED_LANGUAGES } from '../types';
+import { formatChapterFilenameNumber } from '../services/chapterParser';
 
 interface SplitEditorProps {
   activeNovel: Novel | null;
@@ -25,6 +28,7 @@ interface SplitEditorProps {
   onUpdateChapterStatus: (status: ChapterStatus) => void;
   onTranslateChapter: () => void;
   onExtractGlossary: () => void;
+  onUpdateChapterMeta?: (id: string, patch: { nomor_chapter?: number; judul_chapter?: string }) => void;
   onUpdateNovelLanguages?: (source: LanguageCode, target: LanguageCode) => void;
   onAddNovel?: () => void;
   onAddChapter?: () => void;
@@ -43,6 +47,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   onUpdateChapterStatus,
   onTranslateChapter,
   onExtractGlossary,
+  onUpdateChapterMeta,
   onUpdateNovelLanguages,
   onAddNovel,
   onAddChapter,
@@ -53,7 +58,9 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg'>('base');
-
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [editChapterNum, setEditChapterNum] = useState<string>('');
+  const [editChapterTitle, setEditChapterTitle] = useState<string>('');
   if (!activeNovel) {
     return (
       <div className="flex-1 bg-[#111318] flex flex-col items-center justify-center p-8 text-center text-gray-400 select-none">
@@ -108,7 +115,8 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   };
 
   const handleDownloadMarkdown = () => {
-    const filename = `Chapter_${String(activeChapter.nomor_chapter).padStart(2, '0')}.md`;
+    const padNum = formatChapterFilenameNumber(activeChapter.nomor_chapter);
+    const filename = `Chapter_${padNum}.md`;
     const divider = '---';
     const mdContent = `# Chapter ${activeChapter.nomor_chapter}: ${activeChapter.judul_chapter}\n\n## Hasil Terjemahan (${activeNovel.bahasa_target})\n${activeChapter.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${activeNovel.bahasa_sumber})\n${activeChapter.teks_asli || '*(Belum ada teks asli)*'}\n`;
 
@@ -137,28 +145,106 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
       {/* Top Action Bar */}
       <div className="p-3 bg-[#16181D] border-b border-gray-800 flex flex-wrap items-center justify-between gap-3 shadow-sm select-none">
         {/* Left: Chapter Title & Status Dropdown */}
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 font-mono font-bold text-xs px-2.5 py-1 rounded">
-            Bab {activeChapter.nomor_chapter}
+        {isEditingHeader ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-400 font-medium">Bab:</span>
+              <input
+                type="number"
+                step="any"
+                min={0}
+                value={editChapterNum}
+                onChange={(e) => setEditChapterNum(e.target.value)}
+                className="w-16 bg-[#0F1113] border border-indigo-500 text-indigo-400 font-mono font-bold text-xs px-2 py-1 rounded focus:outline-none"
+                placeholder="0, 1..."
+              />
+            </div>
+            <input
+              type="text"
+              value={editChapterTitle}
+              onChange={(e) => setEditChapterTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const parsedNum = parseFloat(editChapterNum);
+                  const validNum = !isNaN(parsedNum) && parsedNum >= 0 ? parsedNum : activeChapter.nomor_chapter;
+                  const validTitle = editChapterTitle.trim() || activeChapter.judul_chapter;
+                  if (onUpdateChapterMeta) {
+                    onUpdateChapterMeta(activeChapter.id, {
+                      nomor_chapter: validNum,
+                      judul_chapter: validTitle,
+                    });
+                  }
+                  setIsEditingHeader(false);
+                } else if (e.key === 'Escape') {
+                  setIsEditingHeader(false);
+                }
+              }}
+              className="bg-[#0F1113] border border-indigo-500 text-gray-100 font-bold text-xs px-2 py-1 rounded focus:outline-none w-48 sm:w-64"
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                const parsedNum = parseFloat(editChapterNum);
+                const validNum = !isNaN(parsedNum) && parsedNum >= 0 ? parsedNum : activeChapter.nomor_chapter;
+                const validTitle = editChapterTitle.trim() || activeChapter.judul_chapter;
+                if (onUpdateChapterMeta) {
+                  onUpdateChapterMeta(activeChapter.id, {
+                    nomor_chapter: validNum,
+                    judul_chapter: validTitle,
+                  });
+                }
+                setIsEditingHeader(false);
+              }}
+              className="p-1 text-emerald-400 hover:bg-gray-800 rounded transition-colors"
+              title="Simpan"
+            >
+              <Check className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setIsEditingHeader(false)}
+              className="p-1 text-gray-400 hover:bg-gray-800 rounded transition-colors"
+              title="Batal"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-gray-200 font-sans">
-              {activeChapter.judul_chapter}
-            </h2>
-            <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
-              <span>Status:</span>
-              <select
-                value={activeChapter.status_pengerjaan}
-                onChange={(e) => onUpdateChapterStatus(e.target.value as ChapterStatus)}
-                className="bg-[#0F1113] border border-gray-800 rounded px-2 py-0.5 text-[11px] text-indigo-400 font-medium focus:outline-none focus:border-indigo-500"
-              >
-                <option value="Belum">Belum Diterjemahkan</option>
-                <option value="Sedang">Sedang Diterjemahkan</option>
-                <option value="Selesai">Selesai</option>
-              </select>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 font-mono font-bold text-xs px-2.5 py-1 rounded">
+              Bab {activeChapter.nomor_chapter}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-sm font-bold text-gray-200 font-sans">
+                  {activeChapter.judul_chapter}
+                </h2>
+                <button
+                  onClick={() => {
+                    setEditChapterNum(String(activeChapter.nomor_chapter));
+                    setEditChapterTitle(activeChapter.judul_chapter);
+                    setIsEditingHeader(true);
+                  }}
+                  className="p-1 text-gray-400 hover:text-indigo-400 transition-colors rounded hover:bg-gray-800"
+                  title="Edit nomor dan judul bab"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
+                <span>Status:</span>
+                <select
+                  value={activeChapter.status_pengerjaan}
+                  onChange={(e) => onUpdateChapterStatus(e.target.value as ChapterStatus)}
+                  className="bg-[#0F1113] border border-gray-800 rounded px-2 py-0.5 text-[11px] text-indigo-400 font-medium focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="Belum">Belum Diterjemahkan</option>
+                  <option value="Sedang">Sedang Diterjemahkan</option>
+                  <option value="Selesai">Selesai</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Center/Right: Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">

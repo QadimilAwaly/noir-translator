@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { Novel, Chapter, ChapterStatus } from '../types';
+import { compareChapterNumbers } from '../services/chapterParser';
 
 interface NovelSidebarProps {
   novels: Novel[];
@@ -28,12 +29,10 @@ interface NovelSidebarProps {
   activeChapterId: string | null;
   onSelectChapter: (id: string) => void;
   onAddChapter: () => void;
-  onImportChapterFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onDeleteChapter: (id: string, e: React.MouseEvent) => void;
   onDeleteNovel: (id: string, e: React.MouseEvent) => void;
   onRenameNovel: (id: string, newTitle: string) => void;
-  onRenameChapter: (id: string, newTitle: string) => void;
-  onImportNovelFolder?: () => void;
+  onRenameChapter: (id: string, newTitle: string, newNumber?: number) => void;
   onAddNovel?: () => void;
   onClose?: () => void;
 }
@@ -46,17 +45,18 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
   activeChapterId,
   onSelectChapter,
   onAddChapter,
-  onImportChapterFile,
   onDeleteChapter,
   onDeleteNovel,
   onRenameNovel,
   onRenameChapter,
-  onImportNovelFolder,
   onAddNovel,
   onClose,
 }) => {
   const [expandedNovelId, setExpandedNovelId] = useState<string | null>(activeNovelId);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
+  const [chapterTitleInput, setChapterTitleInput] = useState('');
+  const [chapterNumberInput, setChapterNumberInput] = useState<number | string>(1);
 
   useEffect(() => {
     if (activeNovelId) {
@@ -66,8 +66,6 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
   const [editingNovelId, setEditingNovelId] = useState<string | null>(null);
   const [novelTitleInput, setNovelTitleInput] = useState('');
 
-  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
-  const [chapterTitleInput, setChapterTitleInput] = useState('');
   const activeNovel = novels.find((n) => n.id === activeNovelId);
 
   const toggleNovelExpand = (id: string) => {
@@ -99,10 +97,12 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
     }
   };
 
-  const filteredChapters = chapters.filter((c) =>
-    c.judul_chapter.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    String(c.nomor_chapter).includes(searchTerm)
-  );
+  const filteredChapters = chapters
+    .filter((c) =>
+      c.judul_chapter.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(c.nomor_chapter).includes(searchTerm)
+    )
+    .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
 
   return (
     <aside className="fixed lg:static inset-y-0 left-0 z-40 w-72 sm:w-80 max-w-[85vw] lg:max-w-none lg:w-64 bg-[#16181D] border-r border-gray-800 flex flex-col h-full text-gray-200 select-none shrink-0 shadow-2xl lg:shadow-none animate-in slide-in-from-left duration-200">
@@ -120,15 +120,6 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
               title="Tambah Novel Baru"
             >
               <Plus className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {onImportNovelFolder && (
-            <button
-              onClick={onImportNovelFolder}
-              className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-indigo-300 transition-colors"
-              title="Impor / Merge Folder Novel Eksternal (misal: E:\Novel_Library\The_Executed_Duke)"
-            >
-              <FolderPlus className="w-4 h-4 text-indigo-400" />
             </button>
           )}
           <span className="text-[10px] text-gray-500 font-mono">
@@ -289,34 +280,50 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
                             <div className="flex items-center gap-2 overflow-hidden pr-2 flex-1">
                               <FileText className={`w-3.5 h-3.5 shrink-0 ${isChapSelected ? 'text-indigo-400' : 'text-gray-500'}`} />
                               {editingChapterId === chap.id ? (
-                                <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min={0}
+                                    value={chapterNumberInput}
+                                    onChange={(e) => setChapterNumberInput(e.target.value)}
+                                    className="w-12 bg-[#0F1113] border border-indigo-500 rounded px-1 py-0.5 text-xs text-indigo-400 font-mono font-bold focus:outline-none shrink-0"
+                                    placeholder="No"
+                                    title="Nomor Bab (bisa 0 atau desimal misal 1.5)"
+                                  />
                                   <input
                                     type="text"
                                     value={chapterTitleInput}
                                     onChange={(e) => setChapterTitleInput(e.target.value)}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') {
-                                        onRenameChapter(chap.id, chapterTitleInput);
+                                        const num = parseFloat(String(chapterNumberInput));
+                                        const validNum = !isNaN(num) && num >= 0 ? num : undefined;
+                                        onRenameChapter(chap.id, chapterTitleInput, validNum);
                                         setEditingChapterId(null);
                                       } else if (e.key === 'Escape') {
                                         setEditingChapterId(null);
                                       }
                                     }}
-                                    className="bg-[#0F1113] border border-indigo-500 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none w-full"
+                                    className="bg-[#0F1113] border border-indigo-500 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none flex-1 min-w-0"
                                     autoFocus
                                   />
                                   <button
                                     onClick={() => {
-                                      onRenameChapter(chap.id, chapterTitleInput);
+                                      const num = parseFloat(String(chapterNumberInput));
+                                      const validNum = !isNaN(num) && num >= 0 ? num : undefined;
+                                      onRenameChapter(chap.id, chapterTitleInput, validNum);
                                       setEditingChapterId(null);
                                     }}
-                                    className="p-0.5 text-emerald-400 hover:bg-gray-800 rounded"
+                                    className="p-0.5 text-emerald-400 hover:bg-gray-800 rounded shrink-0"
+                                    title="Simpan"
                                   >
                                     <Check className="w-3 h-3" />
                                   </button>
                                   <button
                                     onClick={() => setEditingChapterId(null)}
-                                    className="p-0.5 text-gray-400 hover:bg-gray-800 rounded"
+                                    className="p-0.5 text-gray-400 hover:bg-gray-800 rounded shrink-0"
+                                    title="Batal"
                                   >
                                     <X className="w-3 h-3" />
                                   </button>
@@ -335,6 +342,7 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
                                   e.stopPropagation();
                                   setEditingChapterId(chap.id);
                                   setChapterTitleInput(chap.judul_chapter);
+                                  setChapterNumberInput(chap.nomor_chapter);
                                 }}
                                 title="Ubah Judul Chapter"
                                 className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-indigo-400 rounded transition-opacity"
@@ -359,26 +367,15 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
                     )}
                   </div>
 
-                  {/* Add & Import Actions */}
-                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  {/* Add Chapter Action */}
+                  <div className="pt-1">
                     <button
                       onClick={onAddChapter}
-                      className="flex items-center justify-center gap-1 py-1.5 px-2 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded text-xs font-semibold transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded text-xs font-semibold transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Tambah Bab</span>
                     </button>
-
-                    <label className="flex items-center justify-center gap-1 py-1.5 px-2 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 rounded text-xs font-medium cursor-pointer transition-colors">
-                      <Upload className="w-3.5 h-3.5 text-gray-400" />
-                      <span>Impor File</span>
-                      <input
-                        type="file"
-                        accept=".txt,.md"
-                        className="hidden"
-                        onChange={onImportChapterFile}
-                      />
-                    </label>
                   </div>
                 </div>
               )}

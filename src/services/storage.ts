@@ -1,9 +1,7 @@
 import { Novel, Chapter, ReferenceItem, GlossaryItem, NovelReferenceData } from '../types';
 import { authHeaders } from './api';
-
-const ACTIVE_NOVEL_PREF_KEY = 'nt_active_novel_id';
-const ACTIVE_CHAPTER_PREF_KEY = 'nt_active_chapter_id';
-// Seed Initial Sample Novels if localStorage is empty
+import { compareChapterNumbers } from './chapterParser';
+// Initial Sample Novels fallback
 export const initialNovels: Novel[] = [
   {
     id: 'novel-1',
@@ -361,7 +359,7 @@ export function getStoredChapters(novelId?: string): Chapter[] {
   if (novelId) {
     return inMemoryLibrary.chapters
       .filter((c) => c.novel_id === novelId)
-      .sort((a, b) => a.nomor_chapter - b.nomor_chapter);
+      .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
   }
   return inMemoryLibrary.chapters;
 }
@@ -450,36 +448,3 @@ export function deleteStoredGlossary(glossaryId: string, novelId?: string): Glos
   return inMemoryLibrary.glossaries;
 }
 
-export function getPreferredActiveNovelId(): string | null {
-  try {
-    return localStorage.getItem(ACTIVE_NOVEL_PREF_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setPreferredActiveNovelId(id: string | null) {
-  try {
-    if (id) localStorage.setItem(ACTIVE_NOVEL_PREF_KEY, id);
-    else localStorage.removeItem(ACTIVE_NOVEL_PREF_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-export function getPreferredActiveChapterId(): string | null {
-  try {
-    return localStorage.getItem(ACTIVE_CHAPTER_PREF_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setPreferredActiveChapterId(id: string | null) {
-  try {
-    if (id) localStorage.setItem(ACTIVE_CHAPTER_PREF_KEY, id);
-    else localStorage.removeItem(ACTIVE_CHAPTER_PREF_KEY);
-  } catch {
-    // ignore
-  }
-}

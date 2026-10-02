@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { X, BookPlus, Languages, FolderTree, FolderOpen } from 'lucide-react';
+import { X, BookPlus, Languages, FolderTree } from 'lucide-react';
 import { LanguageCode, SUPPORTED_LANGUAGES } from '../types';
-import { requestFolderPicker } from '../services/fileSystemStorage';
-
 interface NewNovelModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,7 +10,6 @@ interface NewNovelModalProps {
     folder_path: string;
     bahasa_sumber: LanguageCode;
     bahasa_target: LanguageCode;
-    dirHandle?: FileSystemDirectoryHandle;
   }) => void;
 }
 
@@ -26,7 +23,6 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
   const [bahasaSumber, setBahasaSumber] = useState<LanguageCode>('Mandarin');
   const [bahasaTarget, setBahasaTarget] = useState<LanguageCode>('Indonesia');
   const [folderPath, setFolderPath] = useState('');
-  const [dirHandle, setDirHandle] = useState<FileSystemDirectoryHandle | undefined>(undefined);
   if (!isOpen) return null;
 
   const libraryDir = globalStoragePath
@@ -43,22 +39,13 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
       folder_path: cleanFolder,
       bahasa_sumber: bahasaSumber,
       bahasa_target: bahasaTarget,
-      dirHandle,
     });
 
     setJudul('');
     setFolderPath('');
-    setDirHandle(undefined);
     onClose();
   };
 
-  const handlePickFolder = async () => {
-    const handle = await requestFolderPicker();
-    if (handle) {
-      setDirHandle(handle);
-      setFolderPath(`[Penyimpanan Lokal] ${handle.name}`);
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
@@ -125,20 +112,10 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
             </div>
           </div>
 
-          <div className="p-3 bg-[#0F1113] border border-gray-800 rounded text-[11px] text-gray-400 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 font-bold text-indigo-400 font-mono">
-                <FolderTree className="w-3.5 h-3.5" />
-                <span>Folder Penyimpanan Lokal Fisik:</span>
-              </div>
-              <button
-                type="button"
-                onClick={handlePickFolder}
-                className="flex items-center gap-1 px-2 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded border border-indigo-500/30 text-[10px] font-semibold transition-colors"
-              >
-                <FolderOpen className="w-3 h-3" />
-                <span>Pilih Folder</span>
-              </button>
+          <div className="p-3 bg-[#0F1113] border border-gray-800 rounded text-[11px] text-gray-400 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-indigo-400 font-mono">
+              <FolderTree className="w-3.5 h-3.5" />
+              <span>Penyimpanan di Perangkat:</span>
             </div>
             <p className="font-mono text-gray-300 truncate">
               {folderPath || `${libraryDir}/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
