@@ -123,6 +123,7 @@ interface ParsedCandidate {
   raw: string;
   lower: string;
   isPureCJK: boolean;
+  canMatchLatin: boolean;
   len: number;
 }
 
@@ -137,11 +138,15 @@ function getParsedCandidates(termStr: string): ParsedCandidate[] {
   const rawCandidates = getKeywordsForMatching(termStr);
   const parsed: ParsedCandidate[] = rawCandidates.map((cand) => {
     const lower = cand.toLowerCase();
+    const isPureCJK = PURE_CJK_REGEX.test(cand);
+    const len = lower.length;
+    const canMatchLatin = !isPureCJK && (len >= 2 || (len === 1 && UNICODE_LETTER_REGEX.test(lower)));
     return {
       raw: cand,
       lower,
-      isPureCJK: PURE_CJK_REGEX.test(cand),
-      len: lower.length,
+      isPureCJK,
+      canMatchLatin,
+      len,
     };
   });
 
@@ -161,7 +166,7 @@ function isParsedCandidateMatching(cand: ParsedCandidate, lowerText: string): bo
   }
 
   // Latin / Mixed / Unicode terms: check Unicode-aware word boundary without compiling regex
-  if (cand.len >= 2 || (cand.len === 1 && UNICODE_LETTER_REGEX.test(cand.lower))) {
+  if (cand.canMatchLatin) {
     const textLen = lowerText.length;
     let pos = firstPos;
     while (pos !== -1) {
