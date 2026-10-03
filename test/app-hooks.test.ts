@@ -191,6 +191,47 @@ describe('Unit: useChapterEditor & isDirty Tracking', () => {
     assert.deepEqual(chapters.map((c) => c.nomor_chapter), [0, 0.5, 1, 1.5]);
     assert.equal(chapters[1].judul_chapter, 'Prequel Part 2');
   });
+  test('createChapter creates new chapter and updates sorted chapters list including chapter 0 and decimals', () => {
+    const { compareChapterNumbers } = require('../src/services/chapterParser');
+    let chapters: Chapter[] = [
+      { id: 'c1', novel_id: 'n1', nomor_chapter: 1, judul_chapter: 'Chapter 1', teks_asli: '', teks_terjemahan: '', status_pengerjaan: 'Belum', updatedAt: '' },
+    ];
+    let activeId: string | null = 'c1';
+
+    const createChapterMock = (novelId: string, data: { nomor_chapter: number; judul_chapter: string; teks_asli: string }) => {
+      const newChap: Chapter = {
+        id: `chap-${novelId}-${Date.now()}`,
+        novel_id: novelId,
+        nomor_chapter: data.nomor_chapter,
+        judul_chapter: data.judul_chapter,
+        teks_asli: data.teks_asli,
+        teks_terjemahan: '',
+        status_pengerjaan: 'Belum',
+        updatedAt: new Date().toISOString(),
+      };
+      chapters = [...chapters, newChap].sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+      activeId = newChap.id;
+      return newChap;
+    };
+
+    // Create chapter 0
+    const chap0 = createChapterMock('n1', { nomor_chapter: 0, judul_chapter: 'Prologue', teks_asli: 'Origin' });
+    assert.equal(activeId, chap0.id);
+    assert.equal(chapters.length, 2);
+    assert.equal(chapters[0].nomor_chapter, 0);
+
+    // Create chapter 0.5
+    const chap05 = createChapterMock('n1', { nomor_chapter: 0.5, judul_chapter: 'Prequel', teks_asli: 'Before' });
+    assert.equal(activeId, chap05.id);
+    assert.equal(chapters.length, 3);
+    assert.deepEqual(chapters.map((c) => c.nomor_chapter), [0, 0.5, 1]);
+
+    // Create chapter 1.5
+    const chap15 = createChapterMock('n1', { nomor_chapter: 1.5, judul_chapter: 'Interlude', teks_asli: 'Between' });
+    assert.equal(activeId, chap15.id);
+    assert.equal(chapters.length, 4);
+    assert.deepEqual(chapters.map((c) => c.nomor_chapter), [0, 0.5, 1, 1.5]);
+  });
 });
 
 describe('Integration: Window Focus Race Condition & Cooldown Mitigation', () => {

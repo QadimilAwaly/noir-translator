@@ -343,6 +343,7 @@ export default function App() {
   }) => {
     if (!activeNovelId) return;
     const newChapter = chapterEditor.createChapter(activeNovelId, data);
+    saveChapterToDiskServer(newChapter);
     showToast(`Bab ${newChapter.nomor_chapter} berhasil ditambahkan.`);
   };
 

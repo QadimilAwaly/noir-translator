@@ -217,7 +217,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
 
   const createChapter = useCallback((novelId: string, data: { nomor_chapter: number; judul_chapter: string; teks_asli: string }): Chapter => {
     const newChapter: Chapter = {
-      id: `chap-${novelId}-${Date.now()}`,
+      id: `chap-${novelId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       novel_id: novelId,
       nomor_chapter: data.nomor_chapter,
       judul_chapter: data.judul_chapter,
@@ -234,6 +234,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
     const activeChapters = updatedAllChapters
       .filter((c) => c.novel_id === novelId)
       .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+    setChapters(activeChapters);
     setActiveChapterId(newChapter.id);
     return newChapter;
   }, []);
