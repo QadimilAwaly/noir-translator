@@ -248,6 +248,27 @@ describe('Chapter ID Generation', () => {
     console.log('  ⚠️  NOTE: Math.random() is predictable — not suitable for security-sensitive IDs');
     console.log('  Recommendation: Use crypto.randomUUID()');
   });
+  test('generateUniqueId works in secure and non-secure environments without throwing', () => {
+    const { generateUniqueId } = require('../src/services/storage');
+    const id1 = generateUniqueId('glos-auto');
+    const id2 = generateUniqueId('glos-auto');
+    assert.ok(id1.startsWith('glos-auto-'));
+    assert.ok(id2.startsWith('glos-auto-'));
+    assert.notEqual(id1, id2);
+
+    // Simulate non-secure context where crypto.randomUUID is undefined
+    const originalCrypto = globalThis.crypto;
+    try {
+      // @ts-ignore
+      globalThis.crypto = {};
+      const fallbackId = generateUniqueId('glos-auto');
+      assert.ok(fallbackId.startsWith('glos-auto-'));
+      assert.ok(fallbackId.length > 15);
+    } finally {
+      // @ts-ignore
+      globalThis.crypto = originalCrypto;
+    }
+  });
 });
 // ============================================================
 // TEST: Responsive Layout & Mobile Panel Visibility

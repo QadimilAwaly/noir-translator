@@ -7,6 +7,7 @@ import {
   saveStoredReferences,
   getStoredGlossaries,
   saveStoredGlossaries,
+  generateUniqueId,
 } from './services/storage';
 import { translateChapterApi, extractGlossaryApi, authHeaders } from './services/api';
 import { filterRelevantGlossaries, filterRelevantReferences } from './services/contextFilter';
@@ -487,7 +488,7 @@ export default function App() {
           );
           if (!exists && activeNovelId) {
             newGlossaryItems.push({
-              id: `glos-auto-${crypto.randomUUID()}`,
+              id: generateUniqueId('glos-auto'),
               novel_id: activeNovelId,
               istilah_asli: term.istilah_asli,
               istilah_terjemahan: term.istilah_terjemahan,

@@ -10,6 +10,7 @@ import {
   deleteStoredChapter,
   deleteStoredGlossary,
   deleteStoredReference,
+  generateUniqueId,
   LibraryStorageData,
 } from '../services/storage';
 import { filterRelevantGlossaries, filterRelevantReferences } from '../services/contextFilter';
@@ -254,7 +255,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
   const addGlossaryItem = useCallback((novelId: string, item: Omit<GlossaryItem, 'id' | 'novel_id'>): GlossaryItem => {
     const newItem: GlossaryItem = {
       ...item,
-      id: `glos-${crypto.randomUUID()}`,
+      id: generateUniqueId('glos'),
       novel_id: novelId,
       gender: item.gender,
     };

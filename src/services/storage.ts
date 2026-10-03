@@ -1,7 +1,21 @@
 import { Novel, Chapter, ReferenceItem, GlossaryItem, NovelReferenceData } from '../types';
 import { authHeaders } from './api';
 import { compareChapterNumbers } from './chapterParser';
-// Initial Sample Novels fallback
+/**
+ * Universal unique ID generator safe across all environments (HTTPS, HTTP LAN, Android WebViews).
+ * Uses crypto.randomUUID() when available, with Date.now() + random fallback in non-secure contexts.
+ */
+export function generateUniqueId(prefix: string = 'id'): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return `${prefix}-${crypto.randomUUID()}`;
+    } catch {
+      // Fallback if randomUUID fails
+    }
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export const initialNovels: Novel[] = [
   {
     id: 'novel-1',
