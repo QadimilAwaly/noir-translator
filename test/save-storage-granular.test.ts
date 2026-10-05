@@ -193,4 +193,38 @@ describe('Integration: Granular Write Simulation (Audit-Daya #06)', () => {
 
     assert.equal(chapterWritesQueued, 0, 'Partial payload without chapters must skip all chapter writes');
   });
+
+  test('Syncing chapters for single novel preserves chapters of other novels', () => {
+    const currentChapters: StoredChapter[] = [
+      { id: 'c-n1-1', novel_id: 'novel-1', nomor_chapter: 1, judul_chapter: 'Bab 1', teks_asli: 'A', teks_terjemahan: '', status_pengerjaan: 'Belum', createdAt: '', updatedAt: '' },
+      { id: 'c-n2-1', novel_id: 'novel-2', nomor_chapter: 1, judul_chapter: 'Bab 1', teks_asli: 'B', teks_terjemahan: '', status_pengerjaan: 'Belum', createdAt: '', updatedAt: '' },
+    ];
+    const incomingChapters: StoredChapter[] = [
+      { id: 'c-n1-1', novel_id: 'novel-1', nomor_chapter: 1, judul_chapter: 'Bab 1 Updated', teks_asli: 'A updated', teks_terjemahan: '', status_pengerjaan: 'Belum', createdAt: '', updatedAt: '' },
+    ];
+
+    const syncedNovelIds = new Set(incomingChapters.map((c) => c.novel_id));
+    const otherNovelsChapters = currentChapters.filter((c) => !syncedNovelIds.has(c.novel_id));
+    const merged = [...otherNovelsChapters, ...incomingChapters];
+
+    assert.equal(merged.length, 2);
+    assert.ok(merged.some((c) => c.novel_id === 'novel-2'), 'Novel 2 chapters must not be wiped');
+    assert.equal(merged.find((c) => c.id === 'c-n1-1')?.judul_chapter, 'Bab 1 Updated');
+  });
+
+  test('Syncing with empty novels array preserves existing stored novels', () => {
+    const currentNovels = [{ id: 'n1', judul: 'Novel 1' }, { id: 'n2', judul: 'Novel 2' }];
+    const incomingNovels: Array<{ id: string; judul: string }> = [];
+
+    let updatedNovels = currentNovels;
+    if (Array.isArray(incomingNovels)) {
+      if (incomingNovels.length === 0 && currentNovels.length > 0) {
+        updatedNovels = currentNovels;
+      } else {
+        updatedNovels = incomingNovels;
+      }
+    }
+
+    assert.equal(updatedNovels.length, 2, 'Empty sync must not wipe existing novels');
+  });
 });

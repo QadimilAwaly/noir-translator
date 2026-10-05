@@ -1437,14 +1437,28 @@ function ensurePromptTemplateFile(): void {
       data.glossaries = (data.glossaries || current.glossaries).filter((g) => remainingIds.has(g.novel_id));
     }
 
-    // Chapters: update or keep existing (prevent accidental empty wipe)
+    // Chapters: if client sent chapters for specific novel(s), merge them while preserving other novels' chapters
     let updatedChapters = current.chapters;
-    if (Array.isArray(data.chapters)) {
-      if (data.chapters.length === 0 && current.chapters.length > 0) {
-        updatedChapters = current.chapters;
-      } else {
-        updatedChapters = data.chapters;
-      }
+    if (Array.isArray(data.chapters) && data.chapters.length > 0) {
+      const syncedNovelIds = new Set(data.chapters.map((c) => c.novel_id));
+      const otherNovelsChapters = current.chapters.filter((c) => !syncedNovelIds.has(c.novel_id));
+      updatedChapters = [...otherNovelsChapters, ...data.chapters];
+    }
+
+    // References: merge while preserving other novels' references
+    let updatedRefs = current.references;
+    if (Array.isArray(data.references) && data.references.length > 0) {
+      const syncedNovelIds = new Set(data.references.map((r) => r.novel_id));
+      const otherRefs = current.references.filter((r) => !syncedNovelIds.has(r.novel_id));
+      updatedRefs = [...otherRefs, ...data.references];
+    }
+
+    // Glossaries: merge while preserving other novels' glossaries
+    let updatedGloss = current.glossaries;
+    if (Array.isArray(data.glossaries) && data.glossaries.length > 0) {
+      const syncedNovelIds = new Set(data.glossaries.map((g) => g.novel_id));
+      const otherGloss = current.glossaries.filter((g) => !syncedNovelIds.has(g.novel_id));
+      updatedGloss = [...otherGloss, ...data.glossaries];
     }
     // 3. Detect renamed novels and rename physical directory
     if (Array.isArray(data.novels)) {
@@ -1471,9 +1485,9 @@ function ensurePromptTemplateFile(): void {
 
     const updated = {
       novels: newNovels,
-      chapters: Array.isArray(data.chapters) ? data.chapters : current.chapters,
-      references: Array.isArray(data.references) ? data.references : current.references,
-      glossaries: Array.isArray(data.glossaries) ? data.glossaries : current.glossaries,
+      chapters: updatedChapters,
+      references: updatedRefs,
+      glossaries: updatedGloss,
       last_updated: current.last_updated,
     };
 
@@ -1552,47 +1566,49 @@ function ensurePromptTemplateFile(): void {
           asyncWritePromises.push(fs.promises.writeFile(glossPath, JSON.stringify(novelGloss), 'utf-8'));
         }
 
-        // 6. Dirty check chapters: only write modified chapters (skip identical files)
-        // 6. Dirty check chapters: write modified chapters and unlink removed/renamed files
-        if (Array.isArray(data.chapters)) {
-          const safeNovelJudul = sanitizeFilename(novel.judul);
-          const activeFileNames = new Set<string>();
+        // 6. Dirty check chapters: only write modified chapters for novels included in this sync
+        if (Array.isArray(data.chapters) && data.chapters.length > 0) {
+          const targetNovelIds = new Set(data.chapters.map((c) => c.novel_id));
+          if (targetNovelIds.has(novel.id)) {
+            const safeNovelJudul = sanitizeFilename(novel.judul);
+            const activeFileNames = new Set<string>();
 
-          for (const chap of novelChaps) {
-            const num = typeof chap.nomor_chapter === 'number' ? chap.nomor_chapter : parseFloat(String(chap.nomor_chapter ?? 0));
-            const validNum = isNaN(num) ? 0 : num;
-            const padNum = formatChapterFilenameNumber(validNum);
-            const fileName = `Chapter_${padNum}.md`;
-            activeFileNames.add(fileName);
+            for (const chap of novelChaps) {
+              const num = typeof chap.nomor_chapter === 'number' ? chap.nomor_chapter : parseFloat(String(chap.nomor_chapter ?? 0));
+              const validNum = isNaN(num) ? 0 : num;
+              const padNum = formatChapterFilenameNumber(validNum);
+              const fileName = `Chapter_${padNum}.md`;
+              activeFileNames.add(fileName);
 
-            const safeChapTitle = sanitizeFilename(chap.judul_chapter || 'Chapter ' + validNum);
-            const chapPath = path.join(novelFolder, fileName);
-            const prevChap = currentChapMap.get(chap.id);
+              const safeChapTitle = sanitizeFilename(chap.judul_chapter || 'Chapter ' + validNum);
+              const chapPath = path.join(novelFolder, fileName);
+              const prevChap = currentChapMap.get(chap.id);
 
-            if (isChapterDirty(prevChap, chap) || !fs.existsSync(chapPath)) {
-              hasChanges = true;
-              const divider = '---';
-              const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
-              asyncWritePromises.push(fs.promises.writeFile(chapPath, mdContent, 'utf-8'));
+              if (isChapterDirty(prevChap, chap) || !fs.existsSync(chapPath)) {
+                hasChanges = true;
+                const divider = '---';
+                const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
+                asyncWritePromises.push(fs.promises.writeFile(chapPath, mdContent, 'utf-8'));
+              }
             }
-          }
 
-          // Clean up orphaned or renamed chapter files on disk
-          if (fs.existsSync(novelFolder)) {
-            try {
-              const existingFiles = fs.readdirSync(novelFolder);
-              for (const file of existingFiles) {
-                if (file.startsWith('Chapter_') && file.endsWith('.md') && !activeFileNames.has(file)) {
-                  try {
-                    fs.unlinkSync(path.join(novelFolder, file));
-                    hasChanges = true;
-                  } catch (e) {
-                    console.warn('Failed unlinking orphaned chapter file:', file, e);
+            // Clean up orphaned or renamed chapter files on disk ONLY for this novel and only if novelChaps has items
+            if (novelChaps.length > 0 && fs.existsSync(novelFolder)) {
+              try {
+                const existingFiles = fs.readdirSync(novelFolder);
+                for (const file of existingFiles) {
+                  if (file.startsWith('Chapter_') && file.endsWith('.md') && !activeFileNames.has(file)) {
+                    try {
+                      fs.unlinkSync(path.join(novelFolder, file));
+                      hasChanges = true;
+                    } catch (e) {
+                      console.warn('Failed unlinking orphaned chapter file:', file, e);
+                    }
                   }
                 }
+              } catch (err) {
+                console.warn('Error reading novel folder for chapter cleanup:', err);
               }
-            } catch (err) {
-              console.warn('Error reading novel folder for chapter cleanup:', err);
             }
           }
         }
