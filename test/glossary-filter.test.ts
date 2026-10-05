@@ -244,3 +244,57 @@ describe('filterRelevantGlossaries (Step 5 Unicode & Multilingual Integration)',
   });
 });
 
+describe('Japanese False-Positive Prevention & Subsumption Deduplication', () => {
+  test('Katakana boundary: Embedded names ("ダン", "ジョン") do NOT match inside "ダンジョン"', () => {
+    const glossaries = createMockGlossary(['ダン', 'ジョン']);
+    const chapterText = 'アベルは、ダンジョン四十層の出来事を思い出したな。';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 0, 'Should not match "ダン" or "ジョン" embedded inside "ダンジョン"');
+  });
+
+  test('Katakana boundary: Standalone name ("ダン") DOES match when delimited by punctuation or particles', () => {
+    const glossaries = createMockGlossary(['ダン']);
+    const chapterText = 'アベルは叫んだ。「ダン、早く逃げろ！」';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].istilah_asli, 'ダン');
+  });
+
+  test('Subsumption deduplication: Shorter term ("ウォータージェット") is omitted when only inside "ウォータージェット256"', () => {
+    const glossaries = createMockGlossary(['ウォータージェット', 'ウォータージェット256']);
+    const chapterText = 'リョウは声を発した。「＜ウォータージェット256＞」瞬時に敵が倒れた。';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].istilah_asli, 'ウォータージェット256');
+  });
+
+  test('Subsumption deduplication: Sub-term with independent occurrences ("王都") is retained alongside longer term', () => {
+    const glossaries = createMockGlossary(['王都', '第八章　王都騒乱']);
+    const chapterText = 'これにて『第八章　王都騒乱』は終了です。王都のルン辺境伯邸はほぼ無事でした。';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 2, 'Both should match because "王都" has an independent occurrence');
+  });
+
+  test('Single Kanji compound & verb protection: "面" does NOT match inside "面々", "真面目", or "面する"', () => {
+    const glossaries = createMockGlossary(['面']);
+    const chapterText = '赤き剣の面々は真面目に取り組んだ。自治庁が面する道路を走った。';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 0, 'Should not match "面" when used in compounds or verb conjugations');
+  });
+
+  test('Single Kanji standalone: "門" DOES match when used as standalone noun', () => {
+    const glossaries = createMockGlossary(['門']);
+    const chapterText = '塀……門があったのであろう場所に到着した。';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].istilah_asli, '門');
+  });
+
+  test('Mixed script verb stem: "突き" does NOT match inside compound verb "突き立てる"', () => {
+    const glossaries = createMockGlossary(['突き']);
+    const chapterText = '肩を砕かれて剣を突き立てられているのだから。';
+    const result = filterRelevantGlossaries(chapterText, glossaries);
+    assert.equal(result.length, 0, 'Should not match "突き" inside compound verb "突き立てる"');
+  });
+});
+
