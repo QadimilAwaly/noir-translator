@@ -13,8 +13,9 @@
  */
 const EXT_REGEX = /\.(md|txt)$/i;
 const NUMBER_PATTERN = '\\d{1,5}(?:\\.\\d{1,4})?';
-const PREFIX_REGEX = new RegExp(`(?:^|[_\-\\s])(?:Chapter|chap|Bab|bab)[_\\-\\s]*(${NUMBER_PATTERN})(?:[_\-\\s].*)?$`, 'i');
+const PREFIX_REGEX = new RegExp(`(?:^|[_\-\\s])(?:Chapter|chap|Bab|bab|Episode|Ep|Ch)[_\\-\\s]*(${NUMBER_PATTERN})(?:[_\-\\s].*)?$`, 'i');
 const NUMBER_ONLY_REGEX = new RegExp(`^${NUMBER_PATTERN}$`);
+const TRAILING_NUMBER_REGEX = new RegExp(`(?:^|[_\-\\s])(${NUMBER_PATTERN})$`);
 const extractChapterCache = new Map<string, number | null>();
 
 export function extractChapterNumber(filename: string): number | null {
@@ -27,7 +28,7 @@ export function extractChapterNumber(filename: string): number | null {
 
   let result: number | null = null;
 
-  // Strategy 1: explicit chapter prefix (Chapter|chap|Bab|bab) followed by number
+  // Strategy 1: explicit chapter prefix (Chapter|chap|Bab|bab|Episode|Ep|Ch) followed by number
   const prefixMatch = base.match(PREFIX_REGEX);
   if (prefixMatch) {
     const n = parseFloat(prefixMatch[1]);
@@ -36,6 +37,21 @@ export function extractChapterNumber(filename: string): number | null {
     // Strategy 2: filename is entirely number (e.g. 0.md, 01.md, 1.5.txt)
     const n = parseFloat(base);
     if (!isNaN(n) && n >= 0 && n <= 99999) result = n;
+  } else {
+    // Strategy 3: trailing number preceded by delimiter (e.g. "Title_1.txt", "Title_0.md", "Novel-12.txt")
+    const trailingMatch = base.match(TRAILING_NUMBER_REGEX);
+    if (trailingMatch) {
+      // Reject version tags (e.g. v3, ver1)
+      if (!/[vV](?:er)?\d+$/.test(base)) {
+        const n = parseFloat(trailingMatch[1]);
+        // Reject 4-digit years (1950-2099) and >= 8-digit timestamps (e.g. 20231225)
+        const isYear = n >= 1950 && n <= 2099 && String(n).length === 4;
+        const isTimestamp = String(n).length >= 8;
+        if (!isYear && !isTimestamp && !isNaN(n) && n >= 0 && n <= 99999) {
+          result = n;
+        }
+      }
+    }
   }
 
   if (extractChapterCache.size < 2000) {

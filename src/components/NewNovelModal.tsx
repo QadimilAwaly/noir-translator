@@ -28,19 +28,20 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
   const libraryDir = globalStoragePath
     ? globalStoragePath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'Novel_Library'
     : 'Novel_Library';
+  const storageBase = globalStoragePath ? globalStoragePath.replace(/[/\\]+$/, '') : libraryDir;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!judul.trim()) return;
 
-    const cleanFolder = folderPath || `${libraryDir}/${judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_')}`;
+    const cleanTitle = judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_');
+    const cleanFolder = folderPath ? folderPath.trim() : cleanTitle;
     onCreateNovel({
       judul: judul.trim(),
       folder_path: cleanFolder,
       bahasa_sumber: bahasaSumber,
       bahasa_target: bahasaTarget,
     });
-
     setJudul('');
     setFolderPath('');
     onClose();
@@ -118,7 +119,7 @@ export const NewNovelModal: React.FC<NewNovelModalProps> = ({
               <span>Penyimpanan di Perangkat:</span>
             </div>
             <p className="font-mono text-gray-300 truncate">
-              {folderPath || `${libraryDir}/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
+              {folderPath || `${storageBase}/${judul ? judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') : 'Judul_Novel'}`}
             </p>
           </div>
 

@@ -20,7 +20,7 @@ export const initialNovels: Novel[] = [
   {
     id: 'novel-1',
     judul: 'Penakluk Tujuh Langit (Sovereign of Seven Heavens)',
-    folder_path: '/Novel_Library/Penakluk_Tujuh_Langit',
+    folder_path: 'Penakluk_Tujuh_Langit',
     bahasa_sumber: 'Mandarin',
     bahasa_target: 'Indonesia',
     createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
@@ -29,7 +29,7 @@ export const initialNovels: Novel[] = [
   {
     id: 'novel-2',
     judul: 'Sang Alkemis Bayangan (The Shadow Alchemist)',
-    folder_path: '/Novel_Library/Sang_Alkemis_Bayangan',
+    folder_path: 'Sang_Alkemis_Bayangan',
     bahasa_sumber: 'Inggris',
     bahasa_target: 'Indonesia',
     createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
@@ -260,16 +260,17 @@ export function setInMemoryLibrary(data: Partial<LibraryStorageData>) {
   if (data.last_updated) inMemoryLibrary.last_updated = data.last_updated;
 }
 
-export async function fetchServerStorage(): Promise<LibraryStorageData | null> {
+export async function fetchServerStorage(force: boolean = false): Promise<LibraryStorageData | null> {
   try {
-    const res = await fetch('/api/storage', {
+    const url = force ? '/api/storage?force=true' : '/api/storage';
+    const res = await fetch(url, {
       headers: authHeaders(),
     });
     if (!res.ok) return null;
     const json = await res.json();
     if (json.status === 'success' && json.data) {
       const data: LibraryStorageData = json.data;
-      const isUnchanged = Boolean(
+      const isUnchanged = !force && Boolean(
         inMemoryLibrary.last_updated &&
         data.last_updated &&
         inMemoryLibrary.last_updated === data.last_updated

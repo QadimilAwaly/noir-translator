@@ -69,7 +69,7 @@ export function useLibrary(initialNovels: Novel[] = []): UseLibraryReturn {
 
       setIsLoading(true);
       try {
-        const serverData = await fetchServerStorage();
+        const serverData = await fetchServerStorage(force);
         lastFetchTimeRef.current = Date.now();
 
         if (serverData && Array.isArray(serverData.novels) && serverData.novels.length > 0) {

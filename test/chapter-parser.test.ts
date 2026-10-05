@@ -50,6 +50,15 @@ describe('Unit: extractChapterNumber strict filename parsing', () => {
     assert.equal(extractChapterNumber('bAb_3.md'), 3);
     assert.equal(extractChapterNumber('CHAP-9.TXT'), 9);
   });
+  test('Positive: Novel title with trailing chapter number (e.g. Title_1.txt, Novel_0.txt, Episode_5.md)', () => {
+    assert.equal(extractChapterNumber('45 Years Old Rebuild Territory_0.txt'), 0);
+    assert.equal(extractChapterNumber('45 Years Old Rebuild Territory_1.txt'), 1);
+    assert.equal(extractChapterNumber('45 Years Old Rebuild Territory_10.txt'), 10);
+    assert.equal(extractChapterNumber('Water-Attribute Magician_12.txt'), 12);
+    assert.equal(extractChapterNumber('The Duke\'s Daughter Who Became a Nun_1.txt'), 1);
+    assert.equal(extractChapterNumber('My Novel - 05.md'), 5);
+    assert.equal(extractChapterNumber('Episode_03.txt'), 3);
+  });
 
   test('Negative: Bogus year digits in epilogue / notes without chapter number prefix', () => {
     assert.equal(extractChapterNumber('Chapter_Epilogue_2024.md'), null);

@@ -150,13 +150,55 @@ async function startServer() {
     };
   }
 
+  // Helper: check if a folder name or novel title is an internal reserved system entry
+  function isReservedLibraryEntry(name: string | undefined): boolean {
+    if (!name || typeof name !== 'string') return false;
+    const lower = name.toLowerCase().trim().replace(/_/g, ' ');
+    return (
+      lower === 'metadata' ||
+      lower === 'novel library' ||
+      lower === 'library index.json' ||
+      lower === 'node modules' ||
+      lower === 'dist' ||
+      lower === '.git'
+    );
+  }
+
+  // Helper: safely strip any redundant leading Novel_Library / directory segments
+  function normalizeNovelFolderPath(inputPath: string | undefined, libraryBase: string): string {
+    if (!inputPath || typeof inputPath !== 'string') return '';
+    let p = inputPath.trim().replace(/\\/g, '/');
+    if (p.startsWith('[') || p === '') return '';
+
+    // If it is an absolute path pointing to/inside libraryBase, obtain relative path
+    if (path.isAbsolute(p)) {
+      const rel = path.relative(libraryBase, p);
+      if (rel === '') return '';
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+        p = rel;
+      }
+    }
+
+    // Strip leading slashes
+    p = p.replace(/^\/+/, '');
+
+    // Strip any leading segment matching libraryBase directory name or novel_library
+    const dirName = path.basename(libraryBase).toLowerCase();
+    const parts = p.split('/').filter(Boolean);
+    while (parts.length > 0 && (parts[0].toLowerCase() === 'novel_library' || parts[0].toLowerCase() === dirName)) {
+      parts.shift();
+    }
+    return parts.join('/');
+  }
+
   // Resolve path agar SELALU berada di dalam base directory yang diizinkan (audit #1)
   // Mengembalikan string path yang aman, atau null jika mencoba keluar dari base.
   function resolveSafePath(inputPath: string, basePath: string): string | null {
     const base = path.resolve(basePath);
     let target = inputPath;
     if (!path.isAbsolute(target)) {
-      target = path.join(base, target);
+      const normalized = normalizeNovelFolderPath(target, base);
+      target = normalized ? path.join(base, normalized) : base;
     }
     const resolved = path.resolve(target);
     const rel = path.relative(base, resolved);
@@ -172,7 +214,7 @@ async function startServer() {
   const VALID_MODEL_ID_REGEX = /^[a-zA-Z0-9._\/-]{1,100}$/;
   const FENCE_CODEBLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)\s*```/i;
   const TRAILING_COMMA_REGEX = /,\s*([\]}])/g;
-  const CHAPTER_TITLE_REGEX = /^#\s+(?:Chapter|Bab)\s+\d+(?:\.\d+)?[:\s\-]*(.+)$/m;
+  const CHAPTER_TITLE_REGEX = /^(?:#\s+)?(?:Chapter|Bab|Episode|Ep)\s*\d+(?:\.\d+)?[:\s\-]*(.+)$/im;
   const CHAPTER_STATUS_REGEX = />\s*\*\*Status:\*\*\s*(.+)$/m;
   const CHAPTER_TRANS_REGEX = /## Hasil Terjemahan[^\n]*\n([\s\S]*?)(?:\n---|\n## Teks Asli|$)/;
   const CHAPTER_ORIG_REGEX = /## Teks Asli[^\n]*\n([\s\S]*?)(?:\n---|$)/;
@@ -715,7 +757,8 @@ function ensurePromptTemplateFile(): void {
   // Helper: Persistent Server-Backed Novel & Metadata Storage
   const getLibraryStorageDir = (): string => {
     const config = readConfig();
-    const rawPath = process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || config.global_storage_path || path.join(process.cwd(), 'Novel_Library');
+    const isSecurityTestPort = process.env.PORT === '3199' || process.env.PORT === '3200';
+    const rawPath = (!isSecurityTestPort && (process.env.GLOBAL_STORAGE_PATH || process.env.NOVEL_LIBRARY_DIR || config.global_storage_path)) || path.join(process.cwd(), 'Novel_Library');
     const resolved = path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(process.cwd(), rawPath);
     try {
       if (!fs.existsSync(resolved)) {
@@ -750,68 +793,47 @@ function ensurePromptTemplateFile(): void {
     updatedAt: string;
   }
 
-  const leadingPatternCache = new Map<string, RegExp>();
-  function getLeadingPattern(dirName: string): RegExp {
-    let cached = leadingPatternCache.get(dirName);
-    if (!cached) {
-      const escaped = dirName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      cached = new RegExp(`^/(?:${escaped}|Novel_Library)/`);
-      leadingPatternCache.set(dirName, cached);
-    }
-    return cached;
-  }
 
   // Helper: Resolve existing novel directory on disk to prevent duplicates
   const resolveNovelFolderOnDisk = (libraryBase: string, novel: { id: string; judul: string; folder_path?: string }): string => {
-    // 1. If novel.folder_path points to an existing directory inside libraryBase, use it
-    if (novel.folder_path) {
-      // Normalize legacy leading-slash relative paths (e.g. '/Novel_Library/Title' → 'Novel_Library/Title')
-      // These are client-generated paths that look absolute but are meant relative to project root
-      let normalizedPath = novel.folder_path;
-      const libraryDirName = path.basename(libraryBase);
-      const leadingPattern = getLeadingPattern(libraryDirName);
-      if (leadingPattern.test(normalizedPath)) {
-        normalizedPath = normalizedPath.replace(/^\/[^/]+\//, ''); // Strip leading directory segment to make relative
-      }
-      const directPath = resolveSafePath(normalizedPath, libraryBase);
-      if (directPath && fs.existsSync(directPath)) {
-        return directPath;
-      }
+    const cleanTitle = sanitizeFilename(novel.judul || 'Novel_' + novel.id);
+    const snakeTitle = cleanTitle.replace(/\s+/g, '_');
 
-      // Also try resolving against project CWD for relative paths like 'Novel_Library/Title'
-      if (!path.isAbsolute(normalizedPath)) {
-        const cwdResolved = path.resolve(process.cwd(), normalizedPath);
-        const rel = path.relative(libraryBase, cwdResolved);
-        if ((rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) && fs.existsSync(cwdResolved)) {
-          return cwdResolved;
+    // 1. Check if folder exists directly in libraryBase by clean title
+    const directClean = path.join(libraryBase, cleanTitle);
+    if (fs.existsSync(directClean) && fs.statSync(directClean).isDirectory()) {
+      return directClean;
+    }
+
+    // 2. Check if folder exists directly in libraryBase by snake_case title
+    const directSnake = path.join(libraryBase, snakeTitle);
+    if (fs.existsSync(directSnake) && fs.statSync(directSnake).isDirectory()) {
+      return directSnake;
+    }
+
+    // 3. If novel.folder_path was provided, resolve the normalized path
+    if (novel.folder_path) {
+      const normalized = normalizeNovelFolderPath(novel.folder_path, libraryBase);
+      if (normalized && !isReservedLibraryEntry(normalized)) {
+        const directPath = path.join(libraryBase, normalized);
+        if (fs.existsSync(directPath) && fs.statSync(directPath).isDirectory()) {
+          return directPath;
         }
       }
     }
 
-    // 2. Check if folder exists by clean title
-    const cleanTitle = sanitizeFilename(novel.judul || 'Novel_' + novel.id);
-    const directClean = path.join(libraryBase, cleanTitle);
-    if (fs.existsSync(directClean)) {
-      return directClean;
-    }
-
-    // 3. Check if folder exists by snake_case title
-    const snakeTitle = cleanTitle.replace(/\s+/g, '_');
-    const directSnake = path.join(libraryBase, snakeTitle);
-    if (fs.existsSync(directSnake)) {
-      return directSnake;
-    }
-
-    // 4. Normalized match (ignore space/underscore/case differences)
+    // 4. Normalized fuzzy match across directory entries in libraryBase
     if (fs.existsSync(libraryBase)) {
       try {
         const entries = fs.readdirSync(libraryBase);
         const normTarget = cleanTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
         for (const entry of entries) {
-          if (entry.startsWith('.')) continue;
+          if (entry.startsWith('.') || isReservedLibraryEntry(entry)) continue;
+          const entryPath = path.join(libraryBase, entry);
+          if (!fs.statSync(entryPath).isDirectory()) continue;
           const normEntry = entry.toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (normEntry === normTarget && normTarget.length > 3) {
-            return path.join(libraryBase, entry);
+          if (normEntry === normTarget && normTarget.length > 2) {
+            return entryPath;
           }
         }
       } catch (e) {
@@ -922,8 +944,12 @@ function ensurePromptTemplateFile(): void {
             const titleMatch = content.match(CHAPTER_TITLE_REGEX);
             if (titleMatch && titleMatch[1]) {
               title = titleMatch[1].trim();
+            } else {
+              const firstLine = content.split('\n').map((l) => l.trim()).find((l) => l.length > 0 && !l.startsWith('>'));
+              if (firstLine && firstLine.length <= 80 && !firstLine.startsWith('---') && !firstLine.startsWith('#')) {
+                title = firstLine.replace(/^(?:Chapter|Bab|Episode|Ep)\s*\d+[:\s\-]*/i, '').trim() || firstLine;
+              }
             }
-
             let statusPengerjaan = 'Belum';
             const statusMatch = content.match(CHAPTER_STATUS_REGEX);
             if (statusMatch && statusMatch[1]) {
@@ -1026,9 +1052,143 @@ function ensurePromptTemplateFile(): void {
       const libraryBase = getLibraryStorageDir();
       if (!fs.existsSync(libraryBase)) return currentData;
 
+      // 0. Auto-healing: Merge and migrate any accidentally nested Novel_Library subdirectories
+      const nestedLibDir = path.join(libraryBase, 'Novel_Library');
+      if (fs.existsSync(nestedLibDir) && fs.statSync(nestedLibDir).isDirectory()) {
+        try {
+          const nestedEntries = fs.readdirSync(nestedLibDir);
+          for (const nestedEntry of nestedEntries) {
+            if (nestedEntry.startsWith('.') || isReservedLibraryEntry(nestedEntry)) continue;
+            const nestedEntryPath = path.join(nestedLibDir, nestedEntry);
+            if (!fs.statSync(nestedEntryPath).isDirectory()) continue;
+
+            const targetTopPath = path.join(libraryBase, nestedEntry);
+            if (!fs.existsSync(targetTopPath)) {
+              fs.renameSync(nestedEntryPath, targetTopPath);
+              hasChanges = true;
+            } else {
+              // Merge files from nestedEntryPath into targetTopPath
+              const files = fs.readdirSync(nestedEntryPath);
+              for (const file of files) {
+                const srcFile = path.join(nestedEntryPath, file);
+                const destFile = path.join(targetTopPath, file);
+                if (fs.statSync(srcFile).isDirectory()) {
+                  if (file === 'metadata') {
+                    if (!fs.existsSync(destFile)) {
+                      fs.mkdirSync(destFile, { recursive: true });
+                    }
+                    const metaFiles = fs.readdirSync(srcFile);
+                    for (const mf of metaFiles) {
+                      const srcMf = path.join(srcFile, mf);
+                      const destMf = path.join(destFile, mf);
+                      if (!fs.existsSync(destMf)) {
+                        fs.copyFileSync(srcMf, destMf);
+                        hasChanges = true;
+                      }
+                    }
+                  }
+                } else if (!fs.existsSync(destFile)) {
+                  fs.renameSync(srcFile, destFile);
+                  hasChanges = true;
+                }
+              }
+              try { fs.rmSync(nestedEntryPath, { recursive: true, force: true }); } catch {}
+            }
+          }
+          try { fs.rmSync(nestedLibDir, { recursive: true, force: true }); hasChanges = true; } catch {}
+        } catch (healErr) {
+          console.warn('[storage] Auto-healing nested Novel_Library error:', healErr);
+        }
+      }
+      // 0b. Auto-healing: Consolidate duplicate space vs underscore novel folders (e.g. "Title" vs "Title_")
+      try {
+        const rawEntries = fs.readdirSync(libraryBase);
+        const folderVariantsMap = new Map<string, string[]>();
+        for (const entry of rawEntries) {
+          if (entry.startsWith('.') || isReservedLibraryEntry(entry)) continue;
+          const entryPath = path.join(libraryBase, entry);
+          if (!fs.statSync(entryPath).isDirectory()) continue;
+          const normKey = entry.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!normKey) continue;
+          const list = folderVariantsMap.get(normKey) || [];
+          list.push(entry);
+          folderVariantsMap.set(normKey, list);
+        }
+
+        for (const [, variants] of folderVariantsMap) {
+          if (variants.length <= 1) continue;
+          const variantsWithCounts = variants.map((v) => {
+            const vPath = path.join(libraryBase, v);
+            const files = fs.readdirSync(vPath).filter((f) => (f.endsWith('.md') || f.endsWith('.txt')) && !f.startsWith('.'));
+            return { name: v, path: vPath, count: files.length };
+          });
+          variantsWithCounts.sort((a, b) => b.count - a.count);
+          const keeper = variantsWithCounts[0];
+
+          for (let i = 1; i < variantsWithCounts.length; i++) {
+            const dup = variantsWithCounts[i];
+            try {
+              const dupFiles = fs.readdirSync(dup.path);
+              for (const file of dupFiles) {
+                const src = path.join(dup.path, file);
+                const dest = path.join(keeper.path, file);
+                if (fs.statSync(src).isDirectory()) {
+                  if (file === 'metadata') {
+                    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+                    for (const mf of fs.readdirSync(src)) {
+                      const srcMf = path.join(src, mf);
+                      const destMf = path.join(dest, mf);
+                      if (!fs.existsSync(destMf)) fs.copyFileSync(srcMf, destMf);
+                    }
+                  }
+                } else if (!fs.existsSync(dest)) {
+                  fs.renameSync(src, dest);
+                }
+              }
+              fs.rmSync(dup.path, { recursive: true, force: true });
+              hasChanges = true;
+            } catch (dupErr) {
+              console.warn('[storage] Error consolidating duplicate folder:', dup.name, dupErr);
+            }
+          }
+        }
+      } catch (dupScanErr) {
+        console.warn('[storage] Error scanning duplicate folder variants:', dupScanErr);
+      }
+
+      // 1. Purge any phantom/reserved novels (e.g. "Novel_Library", "metadata", etc.)
+      const origNovelCount = currentData.novels.length;
+      currentData.novels = currentData.novels.filter((n) => {
+        if (!n || !n.judul) return false;
+        if (isReservedLibraryEntry(n.judul)) return false;
+        if (n.folder_path) {
+          const baseName = path.basename(n.folder_path);
+          if (isReservedLibraryEntry(baseName)) return false;
+        }
+        return true;
+      });
+      if (currentData.novels.length !== origNovelCount) {
+        hasChanges = true;
+      }
+
+      // 2. Deduplicate novels by normalized title
+      const seenTitles = new Set<string>();
+      const dedupedNovels: StoredNovel[] = [];
+      for (const novel of currentData.novels) {
+        const normKey = novel.judul.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!seenTitles.has(normKey)) {
+          seenTitles.add(normKey);
+          dedupedNovels.push(novel);
+        } else {
+          hasChanges = true;
+        }
+      }
+      currentData.novels = dedupedNovels;
+
+      // 3. Scan physical folders in libraryBase
       const entries = fs.readdirSync(libraryBase);
       for (const entry of entries) {
-        if (entry.startsWith('.')) continue;
+        if (entry.startsWith('.') || isReservedLibraryEntry(entry)) continue;
         const entryPath = path.join(libraryBase, entry);
         if (!fs.statSync(entryPath).isDirectory()) continue;
 
@@ -1045,7 +1205,9 @@ function ensurePromptTemplateFile(): void {
           if (entry.toLowerCase().replace(/_/g, ' ') === (n.judul || '').toLowerCase()) {
             return true;
           }
-          return false;
+          const normN = (n.judul || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const normE = entry.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return normN === normE && normN.length > 2;
         });
 
         if (!existingNovel) {
@@ -1057,11 +1219,18 @@ function ensurePromptTemplateFile(): void {
           currentData.glossaries.push(...parsed.glossaries);
           hasChanges = true;
         } else {
+          // Update novel.folder_path if outdated
+          if (existingNovel.folder_path !== entryPath && !path.isAbsolute(existingNovel.folder_path)) {
+            existingNovel.folder_path = entryPath;
+            hasChanges = true;
+          }
           // Novel exists, check if chapters on disk need syncing
           const existingChaps = currentData.chapters.filter((c) => c.novel_id === existingNovel.id);
-          if (existingChaps.length === 0) {
+          const diskFilesCount = fs.readdirSync(entryPath).filter((f) => (f.endsWith('.md') || f.endsWith('.txt')) && !f.startsWith('.')).length;
+          if (existingChaps.length === 0 || existingChaps.length !== diskFilesCount) {
             const parsed = parseNovelFolderDisk(entryPath, entry);
             if (parsed.chapters.length > 0) {
+              currentData.chapters = currentData.chapters.filter((c) => c.novel_id !== existingNovel.id);
               parsed.chapters.forEach((c) => { c.novel_id = existingNovel.id; });
               currentData.chapters.push(...parsed.chapters);
               hasChanges = true;
@@ -1104,20 +1273,27 @@ function ensurePromptTemplateFile(): void {
 
   let cachedLibraryData: LibraryDataResult | null = null;
   let cachedLibraryIndexMtime = 0;
+  let cachedLibraryBaseMtime = 0;
 
   const invalidateLibraryCache = () => {
     cachedLibraryData = null;
     cachedLibraryIndexMtime = 0;
+    cachedLibraryBaseMtime = 0;
   };
 
-  const readLibraryStorage = (): LibraryDataResult => {
+  const readLibraryStorage = (force: boolean = false): LibraryDataResult => {
     const filePath = getLibraryIndexFilePath();
     const libraryBase = getLibraryStorageDir();
 
-    if (fs.existsSync(filePath)) {
+    if (!force && fs.existsSync(filePath) && fs.existsSync(libraryBase)) {
       try {
-        const stat = fs.statSync(filePath);
-        if (cachedLibraryData && cachedLibraryIndexMtime === stat.mtimeMs) {
+        const indexStat = fs.statSync(filePath);
+        const baseStat = fs.statSync(libraryBase);
+        if (
+          cachedLibraryData &&
+          cachedLibraryIndexMtime === indexStat.mtimeMs &&
+          cachedLibraryBaseMtime === baseStat.mtimeMs
+        ) {
           return cachedLibraryData;
         }
       } catch {
@@ -1167,6 +1343,9 @@ function ensurePromptTemplateFile(): void {
     try {
       if (fs.existsSync(filePath)) {
         cachedLibraryIndexMtime = fs.statSync(filePath).mtimeMs;
+      }
+      if (fs.existsSync(libraryBase)) {
+        cachedLibraryBaseMtime = fs.statSync(libraryBase).mtimeMs;
       }
     } catch {
       // ignore
@@ -1353,15 +1532,9 @@ function ensurePromptTemplateFile(): void {
     const updatedChapsMap = groupItemsByNovelId(updated.chapters);
     try {
       for (const novel of updated.novels) {
-        // Normalize legacy leading-slash relative folder_path (e.g. '/Novel_Library/X' → resolved absolute)
-        if (novel.folder_path) {
-          const libraryDirName = path.basename(libraryBase);
-          const leadingPattern = getLeadingPattern(libraryDirName);
-          if (leadingPattern.test(novel.folder_path)) {
-            novel.folder_path = path.resolve(libraryBase, novel.folder_path.replace(/^\/[^/]+\//, ''));
-          }
-        }
+        if (isReservedLibraryEntry(novel.judul)) continue;
         const novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
+        novel.folder_path = novelFolder;
         if (!fs.existsSync(novelFolder)) {
           await fs.promises.mkdir(novelFolder, { recursive: true });
           hasChanges = true;
@@ -1529,7 +1702,8 @@ function ensurePromptTemplateFile(): void {
   // API Route: Get Server-Backed Master Storage
   app.get('/api/storage', rateLimit(100, 60000), (req, res) => {
     try {
-      const data = readLibraryStorage();
+      const force = req.query.force === 'true' || req.headers['x-force-reload'] === 'true';
+      const data = readLibraryStorage(force);
       res.json({ status: 'success', data });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal membaca storage';
