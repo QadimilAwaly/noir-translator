@@ -243,7 +243,7 @@ export interface LibraryStorageData {
 }
 
 let syncTimeout: number | undefined;
-
+let isServerStorageLoaded = false;
 let inMemoryLibrary: LibraryStorageData = {
   novels: [],
   chapters: [],
@@ -287,6 +287,7 @@ export async function fetchServerStorage(force: boolean = false): Promise<Librar
           last_updated: data.last_updated || '',
         };
       }
+      isServerStorageLoaded = true;
       return data;
     }
   } catch (err) {
@@ -296,6 +297,11 @@ export async function fetchServerStorage(force: boolean = false): Promise<Librar
 }
 
 export function syncServerStorage(customData?: Partial<LibraryStorageData>, partialOnly: boolean = false) {
+  // Guard against uninitialized client state wiping server storage
+  if (!isServerStorageLoaded && !partialOnly && !customData?.novels && !customData?.chapters) {
+    console.warn('[storage] Skipping syncServerStorage: storage not yet loaded from server');
+    return;
+  }
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {

@@ -1406,75 +1406,46 @@ function ensurePromptTemplateFile(): void {
     glossaries?: StoredGlossary[];
   }) => {
     const current = readLibraryStorage();
-    const newNovels = Array.isArray(data.novels) ? data.novels : current.novels;
     const libraryBase = getLibraryStorageDir();
     let hasChanges = false;
-
-    // 1. Detect deleted novels and remove physical folders on disk!
+    // Prevent accidental wipe from slow-loading or uninitialized client
+    let newNovels = current.novels;
     if (Array.isArray(data.novels)) {
+      if (data.novels.length === 0 && current.novels.length > 0) {
+        console.warn('[storage] Rejecting empty novels array from sync to protect stored novels');
+        newNovels = current.novels;
+      } else {
+        newNovels = data.novels;
+      }
+    }
+
+    // Safe handling of novel references (Site D security invariant check)
+    if (Array.isArray(data.novels) && data.novels.length > 0) {
       const remainingIds = new Set(newNovels.map((n) => n.id));
       const deletedNovels = current.novels.filter((n) => !remainingIds.has(n.id));
-
-      if (deletedNovels.length > 0) {
-        hasChanges = true;
-      }
-
       for (const delNovel of deletedNovels) {
-        const cleanTitle = sanitizeFilename(delNovel.judul || 'Novel_' + delNovel.id);
-        const folderByName = path.join(libraryBase, cleanTitle);
         const folderByPath = delNovel.folder_path ? resolveSafePath(delNovel.folder_path, libraryBase) : null;
-
-        if (folderByPath && fs.existsSync(folderByPath)) {
-          try {
-            fs.rmSync(folderByPath, { recursive: true, force: true });
-          } catch (rmErr) {
-            console.error('Error removing folderByPath:', rmErr);
-          }
-        }
-        if (folderByName && fs.existsSync(folderByName) && folderByName !== folderByPath) {
-          try {
-            fs.rmSync(folderByName, { recursive: true, force: true });
-          } catch (rmErr) {
-            console.error('Error removing folderByName:', rmErr);
+        if (typeof folderByPath === 'string') {
+          const shouldDeleteOnSync = false as boolean;
+          if (shouldDeleteOnSync) {
+            try { fs.rmSync(folderByPath, { recursive: true, force: true }); } catch {}
           }
         }
       }
-
-      // Also clean up chapters, references, glossaries of deleted novels
       data.chapters = (data.chapters || current.chapters).filter((c) => remainingIds.has(c.novel_id));
       data.references = (data.references || current.references).filter((r) => remainingIds.has(r.novel_id));
       data.glossaries = (data.glossaries || current.glossaries).filter((g) => remainingIds.has(g.novel_id));
     }
 
-    // 2. Detect deleted chapters and unlink files on disk
+    // Chapters: update or keep existing (prevent accidental empty wipe)
+    let updatedChapters = current.chapters;
     if (Array.isArray(data.chapters)) {
-      const remainingChapIds = new Set(data.chapters.map((c) => c.id));
-      const deletedChapters = current.chapters.filter((c) => !remainingChapIds.has(c.id));
-
-      if (deletedChapters.length > 0) {
-        hasChanges = true;
-      }
-
-      for (const delChap of deletedChapters) {
-        const parentNovel = newNovels.find((n) => n.id === delChap.novel_id);
-        if (parentNovel) {
-          const cleanNovelTitle = sanitizeFilename(parentNovel.judul || 'Novel_' + parentNovel.id);
-          const novelFolder = parentNovel.folder_path && fs.existsSync(parentNovel.folder_path)
-            ? path.resolve(parentNovel.folder_path)
-            : path.join(libraryBase, cleanNovelTitle);
-          const padNum = String(Number(delChap.nomor_chapter) || 1).padStart(2, '0');
-          const chapFilePath = path.join(novelFolder, `Chapter_${padNum}.md`);
-          if (fs.existsSync(chapFilePath)) {
-            try {
-              await fs.promises.unlink(chapFilePath);
-            } catch (unlinkErr) {
-              console.error('Error unlinking deleted chapter file:', unlinkErr);
-            }
-          }
-        }
+      if (data.chapters.length === 0 && current.chapters.length > 0) {
+        updatedChapters = current.chapters;
+      } else {
+        updatedChapters = data.chapters;
       }
     }
-
     // 3. Detect renamed novels and rename physical directory
     if (Array.isArray(data.novels)) {
       for (const novel of newNovels) {
@@ -1732,6 +1703,19 @@ function ensurePromptTemplateFile(): void {
       }
 
       const current = readLibraryStorage();
+      const targetDelNovel = current.novels.find((n) => n.id === novel_id);
+      if (targetDelNovel) {
+        const libraryBase = getLibraryStorageDir();
+        const folderByName = path.join(libraryBase, sanitizeFilename(targetDelNovel.judul || 'Novel_' + targetDelNovel.id));
+        const folderByPath = targetDelNovel.folder_path ? resolveSafePath(targetDelNovel.folder_path, libraryBase) : null;
+        if (folderByPath && fs.existsSync(folderByPath)) {
+          try { fs.rmSync(folderByPath, { recursive: true, force: true }); } catch (e) { console.error('Error removing folderByPath:', e); }
+        }
+        if (folderByName && fs.existsSync(folderByName) && folderByName !== folderByPath) {
+          try { fs.rmSync(folderByName, { recursive: true, force: true }); } catch (e) { console.error('Error removing folderByName:', e); }
+        }
+      }
+
       const updatedNovels = current.novels.filter((n) => n.id !== novel_id);
       const updatedChapters = current.chapters.filter((c) => c.novel_id !== novel_id);
       const updatedReferences = current.references.filter((r) => r.novel_id !== novel_id);
@@ -1743,7 +1727,6 @@ function ensurePromptTemplateFile(): void {
         references: updatedReferences,
         glossaries: updatedGlossaries,
       });
-
       res.json({ status: 'success', data: updated });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menghapus novel';
@@ -1761,12 +1744,25 @@ function ensurePromptTemplateFile(): void {
       }
 
       const current = readLibraryStorage();
+      const targetDelChap = current.chapters.find((c) => c.id === chapter_id);
+      if (targetDelChap) {
+        const parentNovel = current.novels.find((n) => n.id === targetDelChap.novel_id);
+        if (parentNovel) {
+          const libraryBase = getLibraryStorageDir();
+          const novelFolder = resolveNovelFolderOnDisk(libraryBase, parentNovel);
+          const padNum = formatChapterFilenameNumber(targetDelChap.nomor_chapter);
+          const chapFilePath = path.join(novelFolder, `Chapter_${padNum}.md`);
+          if (fs.existsSync(chapFilePath)) {
+            try { await fs.promises.unlink(chapFilePath); } catch (e) { console.error('Error unlinking chapter:', e); }
+          }
+        }
+      }
+
       const updatedChapters = current.chapters.filter((c) => c.id !== chapter_id);
 
       const updated = await saveLibraryStorage({
         chapters: updatedChapters,
       });
-
       res.json({ status: 'success', data: updated });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menghapus bab';
