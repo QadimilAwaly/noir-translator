@@ -11,6 +11,7 @@ import https from 'https';
 import http from 'http';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import zlib from 'zlib';
 import { makeDataSection, PROMPT_INJECTION_GUARD, buildTranslateUserPrompt } from './src/services/promptBuilder';
 import { extractChapterNumber, formatChapterFilenameNumber, compareChapterNumbers } from './src/services/chapterParser';
 // Zero-overhead environment loader (.env.local has precedence over .env)
@@ -76,6 +77,52 @@ async function startServer() {
     res.setHeader('Referrer-Policy', 'no-referrer');
     // Dev mode (Vite) butuh inline script + websocket HMR; production memakai CSP ketat
     res.setHeader('Content-Security-Policy', CSP_VALUE);
+    next();
+  });
+  // HTTP Request Logging for observability across LAN & Tailscale
+  app.use((req, res, next) => {
+    const start = Date.now();
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    res.on('finish', () => {
+      const ms = Date.now() - start;
+      const url = req.originalUrl || req.url;
+      if (!url.startsWith('/assets/') && !url.endsWith('.png') && !url.endsWith('.ico')) {
+        console.log(`[HTTP] ${req.method} ${url} ${res.statusCode} ${ms}ms (${ip})`);
+      }
+    });
+    next();
+  });
+
+  // Transparent GZIP response compression for fast delivery over VPN / mobile connections
+  app.use((req, res, next) => {
+    const acceptEncoding = (req.headers['accept-encoding'] as string) || '';
+    if (!acceptEncoding.includes('gzip')) return next();
+
+    const originalSend = res.send.bind(res);
+    res.send = ((body: unknown): express.Response => {
+      if (res.headersSent) return originalSend(body);
+      if (res.getHeader('Content-Encoding')) return originalSend(body);
+
+      let buffer: Buffer | null = null;
+      if (typeof body === 'string') {
+        if (body.length >= 1024) buffer = Buffer.from(body);
+      } else if (Buffer.isBuffer(body)) {
+        if (body.length >= 1024) buffer = body;
+      }
+
+      if (buffer) {
+        try {
+          const compressed = zlib.gzipSync(buffer, { level: 6 });
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Vary', 'Accept-Encoding');
+          res.setHeader('Content-Length', compressed.length);
+          return originalSend(compressed);
+        } catch {
+          return originalSend(body);
+        }
+      }
+      return originalSend(body);
+    }) as unknown as typeof res.send;
     next();
   });
 
@@ -873,7 +920,7 @@ function ensurePromptTemplateFile(): void {
     gender?: 'Male' | 'Female' | 'Neutral';
     konteks?: string;
   }
-  const loadNovelDataFromDisk = (folderPath: string, novelId: string): {
+  const loadNovelDataFromDisk = (folderPath: string, novelId: string, loadFullText: boolean = true): {
     chapters: StoredChapter[];
     references: StoredReference[];
     glossaries: StoredGlossary[];
@@ -982,12 +1029,12 @@ function ensurePromptTemplateFile(): void {
             }
 
             chapters.push({
-              id: `chap-${novelId}-${nomorChapter}-${crypto.randomUUID().slice(0, 8)}`,
+              id: `chap-${novelId}-${nomorChapter}`,
               novel_id: novelId,
               nomor_chapter: nomorChapter,
               judul_chapter: title,
-              teks_asli: originalText,
-              teks_terjemahan: translatedText,
+              teks_asli: loadFullText ? originalText : '',
+              teks_terjemahan: loadFullText ? translatedText : '',
               status_pengerjaan: statusPengerjaan,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1281,82 +1328,123 @@ function ensurePromptTemplateFile(): void {
     cachedLibraryBaseMtime = 0;
   };
 
-  const readLibraryStorage = (force: boolean = false): LibraryDataResult => {
+  const readLibraryStorage = (force: boolean = false, targetNovelId?: string, metaOnly: boolean = false): LibraryDataResult => {
     const filePath = getLibraryIndexFilePath();
     const libraryBase = getLibraryStorageDir();
 
-    if (!force && fs.existsSync(filePath) && fs.existsSync(libraryBase)) {
+    let baseData = cachedLibraryData;
+    const hasCache = Boolean(
+      !force &&
+      baseData &&
+      fs.existsSync(filePath) &&
+      fs.existsSync(libraryBase)
+    );
+
+    if (hasCache && baseData) {
       try {
         const indexStat = fs.statSync(filePath);
         const baseStat = fs.statSync(libraryBase);
         if (
-          cachedLibraryData &&
-          cachedLibraryIndexMtime === indexStat.mtimeMs &&
-          cachedLibraryBaseMtime === baseStat.mtimeMs
+          cachedLibraryIndexMtime !== indexStat.mtimeMs ||
+          cachedLibraryBaseMtime !== baseStat.mtimeMs
         ) {
-          return cachedLibraryData;
+          baseData = null;
+        }
+      } catch {
+        baseData = null;
+      }
+    } else {
+      baseData = null;
+    }
+
+    if (!baseData) {
+      let indexedNovels: StoredNovel[] = [];
+      let lastUpdated = new Date().toISOString();
+      try {
+        if (fs.existsSync(filePath)) {
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.novels)) {
+            indexedNovels = parsed.novels;
+            lastUpdated = parsed.last_updated || lastUpdated;
+          }
+        }
+      } catch (err) {
+        console.error('Error reading library_index.json:', err);
+      }
+
+      const allChapters: StoredChapter[] = [];
+      const allReferences: StoredReference[] = [];
+      const allGlossaries: StoredGlossary[] = [];
+
+      for (const novel of indexedNovels) {
+        const folder = resolveNovelFolderOnDisk(libraryBase, novel);
+        if (fs.existsSync(folder)) {
+          const data = loadNovelDataFromDisk(folder, novel.id, true);
+          allChapters.push(...data.chapters);
+          allReferences.push(...data.references);
+          allGlossaries.push(...data.glossaries);
+        }
+      }
+
+      const result = {
+        novels: indexedNovels,
+        chapters: allChapters,
+        references: allReferences,
+        glossaries: allGlossaries,
+        last_updated: lastUpdated,
+      };
+      baseData = scanAndSyncNovelFolders(result);
+      cachedLibraryData = baseData;
+      try {
+        if (fs.existsSync(filePath)) {
+          cachedLibraryIndexMtime = fs.statSync(filePath).mtimeMs;
+        }
+        if (fs.existsSync(libraryBase)) {
+          cachedLibraryBaseMtime = fs.statSync(libraryBase).mtimeMs;
         }
       } catch {
         // ignore
       }
     }
 
-    let indexedNovels: StoredNovel[] = [];
-    let lastUpdated = new Date().toISOString();
-    try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.novels)) {
-          indexedNovels = parsed.novels;
-          lastUpdated = parsed.last_updated || lastUpdated;
-        }
-      }
-    } catch (err) {
-      console.error('Error reading library_index.json:', err);
-    }
+    // Dynamic projection: keep full text only for the active/target novel; strip for other novels to keep payload tiny
+    const activeNovelIdForText = metaOnly
+      ? null
+      : (targetNovelId || (baseData.novels.length > 0 ? baseData.novels[0].id : null));
 
-    const allChapters: StoredChapter[] = [];
-    const allReferences: StoredReference[] = [];
-    const allGlossaries: StoredGlossary[] = [];
+    const projectedChapters = baseData.chapters.map((c) => {
+      const keepText = activeNovelIdForText !== null && c.novel_id === activeNovelIdForText;
+      if (keepText) return c;
+      if (!c.teks_asli && !c.teks_terjemahan) return c;
+      return {
+        ...c,
+        teks_asli: '',
+        teks_terjemahan: '',
+      };
+    });
 
-    // Load each indexed novel's actual markdown and metadata files directly from disk
-    for (const novel of indexedNovels) {
-      const folder = resolveNovelFolderOnDisk(libraryBase, novel);
-      if (fs.existsSync(folder)) {
-        const data = loadNovelDataFromDisk(folder, novel.id);
-        allChapters.push(...data.chapters);
-        allReferences.push(...data.references);
-        allGlossaries.push(...data.glossaries);
-      }
-    }
-
-    const result = {
-      novels: indexedNovels,
-      chapters: allChapters,
-      references: allReferences,
-      glossaries: allGlossaries,
-      last_updated: lastUpdated,
+    return {
+      novels: baseData.novels,
+      chapters: projectedChapters,
+      references: baseData.references,
+      glossaries: baseData.glossaries,
+      last_updated: baseData.last_updated,
     };
-    const finalResult = scanAndSyncNovelFolders(result);
-    cachedLibraryData = finalResult;
-    try {
-      if (fs.existsSync(filePath)) {
-        cachedLibraryIndexMtime = fs.statSync(filePath).mtimeMs;
-      }
-      if (fs.existsSync(libraryBase)) {
-        cachedLibraryBaseMtime = fs.statSync(libraryBase).mtimeMs;
-      }
-    } catch {
-      // ignore
-    }
-    return finalResult;
   };
 
   // Helper: Invariant check for Chapter modification (Audit-Daya #06)
   // Chapter considered dirty if any core field (number, title, status, original text, or translated text) changed
   const isChapterDirty = (prev: StoredChapter | undefined, next: StoredChapter): boolean => {
     if (!prev) return true; // New chapter
+    // If next is a metadata stub (empty text while prev has text), do not flag text as dirty
+    if ((!next.teks_asli && !next.teks_terjemahan) && (prev.teks_asli || prev.teks_terjemahan)) {
+      return (
+        prev.nomor_chapter !== next.nomor_chapter ||
+        prev.judul_chapter !== next.judul_chapter ||
+        prev.status_pengerjaan !== next.status_pengerjaan
+      );
+    }
     return (
       prev.nomor_chapter !== next.nomor_chapter ||
       prev.judul_chapter !== next.judul_chapter ||
@@ -1587,7 +1675,9 @@ function ensurePromptTemplateFile(): void {
               if (isChapterDirty(prevChap, chap) || !fs.existsSync(chapPath)) {
                 hasChanges = true;
                 const divider = '---';
-                const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${chap.teks_terjemahan || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${chap.teks_asli || '*(Kosong)*'}\n`;
+                const resolvedAsli = chap.teks_asli || prevChap?.teks_asli || '';
+                const resolvedTrans = chap.teks_terjemahan || prevChap?.teks_terjemahan || '';
+                const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${resolvedTrans || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${resolvedAsli || '*(Kosong)*'}\n`;
                 asyncWritePromises.push(fs.promises.writeFile(chapPath, mdContent, 'utf-8'));
               }
             }
@@ -1690,7 +1780,9 @@ function ensurePromptTemplateFile(): void {
   app.get('/api/storage', rateLimit(100, 60000), (req, res) => {
     try {
       const force = req.query.force === 'true' || req.headers['x-force-reload'] === 'true';
-      const data = readLibraryStorage(force);
+      const metaOnly = req.query.meta === 'true';
+      const novelId = typeof req.query.novel_id === 'string' ? req.query.novel_id : undefined;
+      const data = readLibraryStorage(force, novelId, metaOnly);
       res.json({ status: 'success', data });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal membaca storage';

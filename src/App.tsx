@@ -596,6 +596,7 @@ export default function App() {
             <NovelSidebar
               novels={novels}
               activeNovelId={activeNovelId}
+              isLoading={library.isLoading}
               onSelectNovel={library.setActiveNovelId}
               chapters={chapters}
               activeChapterId={activeChapterId}

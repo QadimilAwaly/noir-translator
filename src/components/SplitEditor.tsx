@@ -107,11 +107,26 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
     );
   }
 
-  const handleCopyTranslation = () => {
+  const handleCopyTranslation = async () => {
     if (!activeChapter.teks_terjemahan) return;
-    navigator.clipboard.writeText(activeChapter.teks_terjemahan);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(activeChapter.teks_terjemahan);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = activeChapter.teks_terjemahan;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
   };
 
   const handleDownloadMarkdown = () => {

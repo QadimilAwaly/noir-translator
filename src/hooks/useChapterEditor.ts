@@ -11,6 +11,7 @@ import {
   deleteStoredGlossary,
   deleteStoredReference,
   generateUniqueId,
+  fetchServerStorage,
   LibraryStorageData,
 } from '../services/storage';
 import { filterRelevantGlossaries, filterRelevantReferences } from '../services/contextFilter';
@@ -94,6 +95,20 @@ export function useChapterEditor(): UseChapterEditorReturn {
       setActiveChapterId((prev) => (loadedChapters.some((c) => c.id === prev) ? prev : loadedChapters[0].id));
     } else {
       setActiveChapterId(null);
+    }
+
+    // If chapters exist but have no text loaded yet (lazy-loaded), asynchronously fetch full text for this novel
+    if (loadedChapters.length > 0 && !loadedChapters.some((c) => c.teks_asli || c.teks_terjemahan)) {
+      fetchServerStorage(false, novelId).then((data) => {
+        if (data?.chapters) {
+          const fullChaps = data.chapters
+            .filter((c) => c.novel_id === novelId)
+            .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
+          if (fullChaps.length > 0 && fullChaps.some((c) => c.teks_asli || c.teks_terjemahan)) {
+            setChapters(fullChaps);
+          }
+        }
+      }).catch((e) => console.warn('Failed loading full chapter text for novel:', e));
     }
 
     // 2. References

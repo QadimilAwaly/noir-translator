@@ -260,38 +260,73 @@ export function setInMemoryLibrary(data: Partial<LibraryStorageData>) {
   if (data.last_updated) inMemoryLibrary.last_updated = data.last_updated;
 }
 
-export async function fetchServerStorage(force: boolean = false): Promise<LibraryStorageData | null> {
-  try {
-    const url = force ? '/api/storage?force=true' : '/api/storage';
-    const res = await fetch(url, {
-      headers: authHeaders(),
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (json.status === 'success' && json.data) {
-      const data: LibraryStorageData = json.data;
-      const isUnchanged = !force && Boolean(
-        inMemoryLibrary.last_updated &&
-        data.last_updated &&
-        inMemoryLibrary.last_updated === data.last_updated
-      );
+export async function fetchServerStorage(force: boolean = false, novelId?: string): Promise<LibraryStorageData | null> {
+  const maxRetries = 2;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutMs = 25000;
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      data._notModified = isUnchanged;
+      const params = new URLSearchParams();
+      if (force) params.set('force', 'true');
+      if (novelId) params.set('novel_id', novelId);
+      const qs = params.toString();
+      const url = qs ? `/api/storage?${qs}` : '/api/storage';
 
-      if (!isUnchanged) {
-        inMemoryLibrary = {
-          novels: Array.isArray(data.novels) ? data.novels : [],
-          chapters: Array.isArray(data.chapters) ? data.chapters : [],
-          references: Array.isArray(data.references) ? data.references : [],
-          glossaries: Array.isArray(data.glossaries) ? data.glossaries : [],
-          last_updated: data.last_updated || '',
-        };
+      const res = await fetch(url, {
+        headers: authHeaders(),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+          continue;
+        }
+        return null;
       }
-      isServerStorageLoaded = true;
-      return data;
+
+      const json = await res.json();
+      if (json.status === 'success' && json.data) {
+        const data: LibraryStorageData = json.data;
+        const isUnchanged = !force && !novelId && Boolean(
+          inMemoryLibrary.last_updated &&
+          data.last_updated &&
+          inMemoryLibrary.last_updated === data.last_updated
+        );
+
+        data._notModified = isUnchanged;
+
+        if (!isUnchanged) {
+          // Merge chapters intelligently: keep existing loaded chapter texts if incoming ones are metadata-only
+          const existingChapMap = new Map(inMemoryLibrary.chapters.map((c) => [c.id, c]));
+          const mergedChapters = (Array.isArray(data.chapters) ? data.chapters : []).map((newChap) => {
+            const oldChap = existingChapMap.get(newChap.id);
+            if (oldChap && (!newChap.teks_asli && !newChap.teks_terjemahan) && (oldChap.teks_asli || oldChap.teks_terjemahan)) {
+              return { ...newChap, teks_asli: oldChap.teks_asli, teks_terjemahan: oldChap.teks_terjemahan };
+            }
+            return newChap;
+          });
+
+          inMemoryLibrary = {
+            novels: Array.isArray(data.novels) && data.novels.length > 0 ? data.novels : inMemoryLibrary.novels,
+            chapters: mergedChapters,
+            references: Array.isArray(data.references) ? data.references : inMemoryLibrary.references,
+            glossaries: Array.isArray(data.glossaries) ? data.glossaries : inMemoryLibrary.glossaries,
+            last_updated: data.last_updated || inMemoryLibrary.last_updated || '',
+          };
+        }
+        isServerStorageLoaded = true;
+        return data;
+      }
+    } catch (err) {
+      console.warn(`[storage] fetchServerStorage attempt ${attempt} failed:`, err);
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
     }
-  } catch (err) {
-    console.warn('Could not fetch server storage:', err);
   }
   return null;
 }

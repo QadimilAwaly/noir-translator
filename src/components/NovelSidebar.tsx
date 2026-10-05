@@ -16,7 +16,8 @@ import {
   BookOpenCheck,
   Edit2,
   Check,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { Novel, Chapter, ChapterStatus } from '../types';
 import { compareChapterNumbers } from '../services/chapterParser';
@@ -35,6 +36,7 @@ interface NovelSidebarProps {
   onRenameChapter: (id: string, newTitle: string, newNumber?: number) => void;
   onAddNovel?: () => void;
   onClose?: () => void;
+  isLoading?: boolean;
 }
 
 export const NovelSidebar: React.FC<NovelSidebarProps> = ({
@@ -51,6 +53,7 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
   onRenameChapter,
   onAddNovel,
   onClose,
+  isLoading = false,
 }) => {
   const [expandedNovelId, setExpandedNovelId] = useState<string | null>(activeNovelId);
   const [searchTerm, setSearchTerm] = useState('');
@@ -122,8 +125,12 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
               <Plus className="w-3.5 h-3.5" />
             </button>
           )}
-          <span className="text-[10px] text-gray-500 font-mono">
-            {novels.length} Judul
+          <span className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
+            {isLoading && novels.length === 0 ? (
+              <RefreshCw className="w-2.5 h-2.5 text-indigo-400 animate-spin" />
+            ) : (
+              `${novels.length} Judul`
+            )}
           </span>
           {onClose && (
             <button
@@ -137,7 +144,13 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {novels.length === 0 ? (
+        {isLoading && novels.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 space-y-3 flex flex-col items-center justify-center h-48">
+            <RefreshCw className="w-7 h-7 text-indigo-400 animate-spin mb-1" />
+            <p className="text-xs text-indigo-300 font-medium">Memuat perpustakaan novel...</p>
+            <p className="text-[11px] text-gray-500">Menghubungkan ke storage server...</p>
+          </div>
+        ) : novels.length === 0 ? (
           <div className="p-6 text-center text-gray-500 space-y-3 flex flex-col items-center justify-center h-48">
             <Library className="w-8 h-8 text-gray-600 mb-1" />
             <p className="text-xs text-gray-400">Belum ada novel di library.</p>
