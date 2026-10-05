@@ -11,6 +11,7 @@ import {
 } from './services/storage';
 import { translateChapterApi, extractGlossaryApi, authHeaders } from './services/api';
 import { filterRelevantGlossaries, filterRelevantReferences } from './services/contextFilter';
+import { validateGlossaryCandidate, partitionGlossaryByQuality } from './services/glossaryFilter';
 import { exportNovelAsFolderZip } from './services/exportZip';
 import { useLibrary } from './hooks/useLibrary';
 import { useChapterEditor } from './hooks/useChapterEditor';
@@ -483,15 +484,18 @@ export default function App() {
         const newGlossaryItems: GlossaryItem[] = [...glossaries];
 
         result.terms.forEach((term) => {
+          const validation = validateGlossaryCandidate(term);
+          if (!validation.valid) return;
+
           const exists = newGlossaryItems.some(
-            (g) => g.istilah_asli.toLowerCase() === term.istilah_asli.toLowerCase()
+            (g) => g.istilah_asli.toLowerCase() === validation.cleanedTerm.toLowerCase()
           );
           if (!exists && activeNovelId) {
             newGlossaryItems.push({
               id: generateUniqueId('glos-auto'),
               novel_id: activeNovelId,
-              istilah_asli: term.istilah_asli,
-              istilah_terjemahan: term.istilah_terjemahan,
+              istilah_asli: validation.cleanedTerm,
+              istilah_terjemahan: validation.cleanedTranslation,
               kategori: term.kategori || 'Istilah Khusus',
               gender: term.gender,
               chapter_ditemukan: `Chapter ${activeChapter.nomor_chapter}`,
@@ -502,7 +506,7 @@ export default function App() {
         });
         saveStoredGlossaries(newGlossaryItems, activeNovelId || undefined);
         chapterEditor.setGlossaries(newGlossaryItems);
-        showToast(`Berhasil mengekstrak ${addedCount} istilah baru ke glosarium!`);
+        showToast(`Berhasil mengekstrak ${addedCount} istilah baru berkualitas ke glosarium!`);
       } else {
         showToast('Tidak ada istilah baru tambahan ditemukan pada bab ini.');
       }
@@ -512,6 +516,19 @@ export default function App() {
     } finally {
       setIsExtracting(false);
     }
+  };
+  // Handler: Clean generic noisy terms from existing glossary (e.g. Water-Attribute Magician)
+  const handleCleanNoisyGlossary = () => {
+    if (!activeNovelId || glossaries.length === 0) return;
+    const { clean, removed } = partitionGlossaryByQuality(glossaries);
+    if (removed.length === 0) {
+      showToast('Glosarium sudah bersih! Tidak ada kata umum atau penanda bab yang terdeteksi.');
+      return;
+    }
+
+    saveStoredGlossaries(clean, activeNovelId);
+    chapterEditor.setGlossaries(clean);
+    showToast(`Berhasil membersihkan ${removed.length} kata umum & judul bab dari glosarium!`);
   };
 
   // Export Physical Folder ZIP
@@ -651,6 +668,7 @@ export default function App() {
               onAddGlossaryItem={handleAddGlossaryItem}
               onDeleteGlossaryItem={handleDeleteGlossaryItem}
               onUpdateGlossaryGender={handleUpdateGlossaryGender}
+              onCleanNoisyGlossary={handleCleanNoisyGlossary}
               onOpenNewGlossaryModal={() => setIsNewGlossaryModalOpen(true)}
               onClose={() => setIsRightPanelOpen(false)}
             />

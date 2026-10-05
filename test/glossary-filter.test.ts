@@ -10,6 +10,7 @@
 import { test, describe } from 'bun:test';
 import assert from 'assert';
 import { filterRelevantGlossaries, getKeywordsForMatching, cleanSearchKeyword } from '../src/services/contextFilter';
+import { validateGlossaryCandidate, cleanSurroundingBrackets, partitionGlossaryByQuality } from '../src/services/glossaryFilter';
 import { GlossaryItem } from '../src/types';
 
 function createMockGlossary(terms: string[]): GlossaryItem[] {
@@ -295,6 +296,58 @@ describe('Japanese False-Positive Prevention & Subsumption Deduplication', () =>
     const chapterText = '肩を砕かれて剣を突き立てられているのだから。';
     const result = filterRelevantGlossaries(chapterText, glossaries);
     assert.equal(result.length, 0, 'Should not match "突き" inside compound verb "突き立てる"');
+  });
+});
+
+describe('Glossary Extraction Noise Filter (Quality Criteria)', () => {
+  test('cleanSurroundingBrackets strips Japanese and Latin quote brackets', () => {
+    assert.equal(cleanSurroundingBrackets('「ウォータージェット」'), 'ウォータージェット');
+    assert.equal(cleanSurroundingBrackets('『赤き剣』'), '赤き剣');
+    assert.equal(cleanSurroundingBrackets('【ケネス】'), 'ケネス');
+    assert.equal(cleanSurroundingBrackets('“Sword”'), 'Sword');
+  });
+
+  test('validateGlossaryCandidate rejects chapter titles and volume markers', () => {
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '第八章　王都騒乱', istilah_terjemahan: 'Chapter 8' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '第151話', istilah_terjemahan: 'Episode 151' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: 'Chapter 151', istilah_terjemahan: 'Bab 151' }).valid, false);
+  });
+
+  test('validateGlossaryCandidate rejects common generic Japanese dictionary items', () => {
+    assert.equal(validateGlossaryCandidate({ istilah_asli: 'お湯', istilah_terjemahan: 'Hot water' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '水道', istilah_terjemahan: 'Tap Water' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '台車', istilah_terjemahan: 'Cart' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '腰布', istilah_terjemahan: 'loincloth' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '剣技', istilah_terjemahan: 'sword technique' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '王国', istilah_terjemahan: 'Kingdom' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '王都', istilah_terjemahan: 'Royal Capital' }).valid, false);
+  });
+
+  test('validateGlossaryCandidate rejects generic single Kanji non-names', () => {
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '門', istilah_terjemahan: 'gate', kategori: 'Istilah Khusus' }).valid, false);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '面', istilah_terjemahan: 'men', kategori: 'Jurus/Sekte' }).valid, false);
+  });
+
+  test('validateGlossaryCandidate accepts genuine proper nouns and unique lore', () => {
+    assert.equal(validateGlossaryCandidate({ istilah_asli: '涼', istilah_terjemahan: 'Ryou', kategori: 'Nama' }).valid, true);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: 'アベル', istilah_terjemahan: 'Abel', kategori: 'Nama' }).valid, true);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: 'ウォータージェット256', istilah_terjemahan: 'Water Jet 256', kategori: 'Jurus/Sekte' }).valid, true);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: 'ロンドの森', istilah_terjemahan: 'Rondo Forest', kategori: 'Tempat' }).valid, true);
+    assert.equal(validateGlossaryCandidate({ istilah_asli: 'アークデビル', istilah_terjemahan: 'Archdevil', kategori: 'Istilah Khusus' }).valid, true);
+  });
+
+  test('partitionGlossaryByQuality correctly separates clean items from noisy items', () => {
+    const mixed = [
+      { id: '1', novel_id: 'n1', istilah_asli: 'お湯', istilah_terjemahan: 'Hot water', kategori: 'Item' as const },
+      { id: '2', novel_id: 'n1', istilah_asli: 'アベル', istilah_terjemahan: 'Abel', kategori: 'Nama' as const },
+      { id: '3', novel_id: 'n1', istilah_asli: '王国', istilah_terjemahan: 'Kingdom', kategori: 'Tempat' as const },
+      { id: '4', novel_id: 'n1', istilah_asli: 'ウォータージェット256', istilah_terjemahan: 'Water Jet 256', kategori: 'Jurus/Sekte' as const },
+    ];
+    const { clean, removed } = partitionGlossaryByQuality(mixed);
+    assert.equal(clean.length, 2);
+    assert.equal(removed.length, 2);
+    assert.equal(clean[0].istilah_asli, 'アベル');
+    assert.equal(clean[1].istilah_asli, 'ウォータージェット256');
   });
 });
 

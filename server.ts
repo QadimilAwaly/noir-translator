@@ -14,6 +14,8 @@ import crypto from 'crypto';
 import zlib from 'zlib';
 import { makeDataSection, PROMPT_INJECTION_GUARD, buildTranslateUserPrompt } from './src/services/promptBuilder';
 import { extractChapterNumber, formatChapterFilenameNumber, compareChapterNumbers } from './src/services/chapterParser';
+import { validateGlossaryCandidate } from './src/services/glossaryFilter';
+import { ExtractedTerm } from './src/types';
 // Zero-overhead environment loader (.env.local has precedence over .env)
 function loadEnvFile(filepath: string): void {
   try {
@@ -2278,7 +2280,9 @@ function ensurePromptTemplateFile(): void {
           }).filter(Boolean).join('\n')
         : 'Belum ada istilah terdaftar.';
 
-      const extractSystemInstruction = `Anda adalah asisten ekstraksi glosarium novel dari ${sourceLang} ke ${targetLang} yang mengembalikan JSON valid saja.` + PROMPT_INJECTION_GUARD;
+      const extractSystemInstruction = `Anda adalah kurator glosarium novel profesional (${sourceLang} -> ${targetLang}) dengan standar linguistik tinggi.
+Tugas Anda adalah HANYA mengekstrak entitas bernama khusus (Proper Nouns) dan istilah/lore unik karya yang bernilai tinggi untuk konsistensi terjemahan jangka panjang.
+DILARANG KERAS mengekstrak kata benda umum sehari-hari, kosakata kamus standar, atau judul/penomoran bab. Kembalikan JSON valid saja.` + PROMPT_INJECTION_GUARD;
 
       const prompt = `Analisis teks asli (${sourceLang}) dan teks terjemahan (${targetLang}) dari Chapter ${nomor_chapter} berikut:
 
@@ -2292,37 +2296,34 @@ ${makeDataSection('TEKS_ASLI', teks_asli.slice(0, 5000))}
 ${makeDataSection('TEKS_TERJEMAHAN', teks_terjemahan.slice(0, 5000))}
 
 Tugas Anda:
-Ekstrak semua istilah baru yang penting yang muncul dalam chapter ini dari bahasa sumber (${sourceLang}) ke bahasa target (${targetLang}), meliputi:
-1. Nama Karakter (orang, gelar) - WAJIB sertakan gender ("Male" / "Female" / "Neutral") untuk panduan pronoun he/she
-2. Nama Tempat / Lokasi / Sekte / Kota / Bangunan
-3. Jurus, Teknik, Alam Kultivasi, Sihir, Kemampuan
-4. Item Khusus, Senjata, Artefak, Ramuan
-5. Istilah Khusus Novel / Lore Unik
+Kurasi dan ekstrak HANYA entitas bernama khusus (Proper Nouns) dan istilah unik novel yang berharga untuk konsistensi translasi bab-bab berikutnya:
+1. NAMA KARAKTER / TOKOH (Orang, gelar khusus bernama, julukan khusus tokoh) - WAJIB sertakan 'gender' ("Male" / "Female" / "Neutral") untuk panduan pronoun he/she dalam bahasa Inggris.
+2. NAMA TEMPAT / GEOGRAFIS BERNAMA (Kota, kerajaan bernama, hutan bernama, markas/gedung bernama).
+3. NAMA JURUS / MANTHRA / KEMAMPUAN KHUSUS (Nama unik sihir/mantra, teknik khas bernama, alam kultivasi bernama).
+4. ITEM & ARTEFAK SPESIFIK (Nama senjata legendaris bernama, artefak unik, ramuan khusus bernama).
+5. LORE & FRAKSI UNIK NOVEL (Nama ordo/ksatria bernama, sekte, ras/monster unik karya).
 
-ATURAN KONSISTENSI & LARANGAN:
-1. KONSISTENSI KATA TURUNAN / NAMA KELUARGA / IBU-ANAK:
-   Jika menemukan istilah/nama baru yang mengandung kata atau nama keluarga yang sudah terdaftar di Glosarium di atas (contoh: glosarium memiliki "ルカリム" -> "Lukalim", dan di bab ini muncul nama karakter "エルストラ・コーズ・ルカリム"), Anda WAJIB menggunakan ejaan baku yang sudah terdaftar ("Lukalim" -> "Elstra Coz Lukalim"). DILARANG KERAS membuat variasi ejaan baru (seperti "Lucalym")!
-2. DILARANG mengekstrak ulang istilah yang sudah terdaftar di Glosarium di atas.
-3. DILARANG mengekstrak kalimat dialog biasa, seruan, mantra panjang utuh, atau kata benda umum sehari-hari (seperti "buku", "tas", "pakaian"). HANYA ekstrak nama entitas dan istilah khusus yang berharga.
-4. 'istilah_asli' HARUS berupa kata/frasa dalam bahasa sumber (${sourceLang}).
-5. 'istilah_terjemahan' HARUS berupa padanan/terjemahan resmi dalam bahasa target (${targetLang}), BUKAN bahasa lain.
-6. Jika kategori adalah "Nama", tentukan 'gender' ("Male" untuk pria, "Female" untuk wanita, "Neutral" untuk lainnya) untuk memastikan konsistensi pronoun bahasa Inggris (he vs she).
-7. 'konteks' berupa catatan singkat dalam bahasa target (${targetLang}).
+DILARANG KERAS (KRITERIA PENOLAKAN KETAT):
+❌ DILARANG mengekstrak kata benda umum sehari-hari (contoh: "air", "air panas", "gerobak", "ikan", "bumbu", "tali", "kain", "tas", "buku", "pintu", "gerbang", "sepatu", "makanan").
+❌ DILARANG mengekstrak klasifikasi geografis/sosial umum tanpa nama diri (contoh: "kerajaan", "kekaisaran", "ibukota", "desa", "hutan", "gunung", "prajurit", "ksatria", "pedagang", "rakyat" — KECUALI ada nama dirinya seperti "Kerajaan Grantz" atau "Ksatria Rune").
+❌ DILARANG mengekstrak kata aksi umum atau teknik beladiri kamus biasa (contoh: "tebasan", "tusukan", "ayunan pedang", "pertahanan", "latihan", "kehadiran").
+❌ DILARANG mengekstrak judul bab, nomor bab, atau penanda bab (contoh: "Bab 8", "Chapter 151", "Volume 2", "Prolog").
+❌ DILARANG mengekstrak kata tunggal 1 karakter kanji yang merupakan kosakata umum kamus.
+❌ DILARANG mengekstrak ulang istilah yang sudah terdaftar di Glosarium di atas.
 
 Kembalikan respon DALAM FORMAT JSON SAJA dengan skema:
 {
   "terms": [
     {
-      "istilah_asli": "istilah dalam bahasa sumber (${sourceLang})",
-      "istilah_terjemahan": "terjemahan resmi dalam bahasa target (${targetLang})",
+      "istilah_asli": "nama/istilah asli dalam bahasa sumber (${sourceLang})",
+      "istilah_terjemahan": "terjemahan baku dalam bahasa target (${targetLang})",
       "kategori": "Nama" | "Tempat" | "Jurus/Sekte" | "Item" | "Istilah Khusus",
       "gender": "Male" | "Female" | "Neutral" (Wajib jika kategori "Nama"),
-      "konteks": "penjelasan singkat penggunaan dalam bahasa ${targetLang}"
+      "konteks": "penjelasan singkat peran/penggunaan dalam bahasa ${targetLang}"
     }
   ]
-}
-HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab selanjutnya.`;
-      let parsed: { terms: any[] } = { terms: [] };
+}`;
+      let parsed: { terms: unknown[] } = { terms: [] };
 
       if (provider === 'openrouter') {
         const apiKey = apiKeyOverride;
@@ -2398,12 +2399,41 @@ HANYA ekstrak istilah yang penting dan benar-benar berguna untuk konsistensi bab
         }
       }
 
+      const rawTerms: unknown[] = Array.isArray(parsed.terms) ? parsed.terms : [];
+      const cleanTerms: ExtractedTerm[] = [];
+
+      for (const item of rawTerms) {
+        if (!item || typeof item !== 'object') continue;
+        const it = item as Record<string, unknown>;
+        const validation = validateGlossaryCandidate({
+          istilah_asli: String(it.istilah_asli || ''),
+          istilah_terjemahan: String(it.istilah_terjemahan || ''),
+          kategori: typeof it.kategori === 'string' ? it.kategori : undefined,
+        });
+
+        if (validation.valid) {
+          const kategoriValid = (typeof it.kategori === 'string' && ['Nama', 'Tempat', 'Jurus/Sekte', 'Item', 'Istilah Khusus'].includes(it.kategori))
+            ? (it.kategori as 'Nama' | 'Tempat' | 'Jurus/Sekte' | 'Item' | 'Istilah Khusus')
+            : 'Istilah Khusus';
+          const genderValid = (it.gender === 'Male' || it.gender === 'Female' || it.gender === 'Neutral') ? it.gender : undefined;
+
+          cleanTerms.push({
+            istilah_asli: validation.cleanedTerm,
+            istilah_terjemahan: validation.cleanedTranslation,
+            kategori: kategoriValid,
+            gender: genderValid,
+            konteks: String(it.konteks || ''),
+          });
+        }
+      }
+
       return res.json({
-        terms: parsed.terms || [],
+        terms: cleanTerms,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error extracting glossary:', error);
-      return res.status(500).json({ error: error.message || 'Gagal mengekstrak glosarium otomatis.' });
+      const msg = error instanceof Error ? error.message : String(error);
+      return res.status(500).json({ error: msg || 'Gagal mengekstrak glosarium otomatis.' });
     }
   });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   BookMarked,
   BookOpen,
@@ -12,8 +12,10 @@ import {
   Tag,
   Sparkles,
   Info,
-  X
+  X,
+  Wand2
 } from 'lucide-react';
+import { validateGlossaryCandidate } from '../services/glossaryFilter';
 import {
   Novel,
   ReferenceItem,
@@ -36,6 +38,7 @@ interface ContextPanelProps {
   onDeleteGlossaryItem: (id: string) => void;
   onUpdateGlossaryGender?: (id: string, gender: GenderTag | undefined) => void;
   onOpenNewGlossaryModal: () => void;
+  onCleanNoisyGlossary?: () => void;
   onClose?: () => void;
 }
 
@@ -53,6 +56,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   onDeleteGlossaryItem,
   onUpdateGlossaryGender,
   onOpenNewGlossaryModal,
+  onCleanNoisyGlossary,
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'reference' | 'glossary'>('glossary');
@@ -211,6 +215,27 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
             </div>
           </div>
 
+          {/* Noisy Words Cleanup Banner */}
+          {(() => {
+            const noisyCount = glossaries.filter((g) => !validateGlossaryCandidate(g).valid).length;
+            if (noisyCount === 0 || !onCleanNoisyGlossary) return null;
+            return (
+              <div className="flex items-center justify-between p-2 bg-amber-500/10 border border-amber-500/20 rounded text-[11px] text-amber-300">
+                <div className="flex items-center gap-1.5">
+                  <Wand2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Terdeteksi <strong>{noisyCount}</strong> kata umum/judul bab</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onCleanNoisyGlossary}
+                  className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded font-semibold transition-all hover:scale-102 cursor-pointer"
+                  title="Hapus kata-kata umum kamus dan judul bab yang tidak perlu dari glosarium"
+                >
+                  Bersihkan
+                </button>
+              </div>
+            );
+          })()}
           {/* Glossary List */}
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
             {filteredGlossary.length > 0 ? (
