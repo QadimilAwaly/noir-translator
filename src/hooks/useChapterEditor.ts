@@ -268,17 +268,35 @@ export function useChapterEditor(): UseChapterEditorReturn {
   }, []);
 
   const addGlossaryItem = useCallback((novelId: string, item: Omit<GlossaryItem, 'id' | 'novel_id'>): GlossaryItem => {
-    const newItem: GlossaryItem = {
-      ...item,
-      id: generateUniqueId('glos'),
-      novel_id: novelId,
-      gender: item.gender,
-    };
     const allGloss = getStoredGlossaries(novelId);
-    const updatedAll = [newItem, ...allGloss];
+    const existingIndex = allGloss.findIndex(
+      (g) => g.istilah_asli.trim().toLowerCase() === item.istilah_asli.trim().toLowerCase()
+    );
+
+    let updatedAll: GlossaryItem[];
+    let returnItem: GlossaryItem;
+
+    if (existingIndex !== -1) {
+      const existing = allGloss[existingIndex];
+      returnItem = {
+        ...existing,
+        ...item,
+        id: existing.id,
+        novel_id: novelId,
+      };
+      updatedAll = allGloss.map((g, idx) => (idx === existingIndex ? returnItem : g));
+    } else {
+      returnItem = {
+        ...item,
+        id: generateUniqueId('glos'),
+        novel_id: novelId,
+      };
+      updatedAll = [returnItem, ...allGloss];
+    }
+
     saveStoredGlossaries(updatedAll, novelId);
     setGlossaries(updatedAll);
-    return newItem;
+    return returnItem;
   }, []);
 
   const deleteGlossaryItem = useCallback((id: string, novelId: string): GlossaryItem[] => {

@@ -262,7 +262,23 @@ export function filterRelevantGlossaries(
 
   const lowerText = text.toLowerCase();
 
-  // 1. Collect all match spans for each glossary item
+  // 0. Deduplicate input glossaries by normalized original term (istilah_asli)
+  // If the same original term appears multiple times with different translations,
+  // strictly preserve the one that was saved earlier (lower index in stored array).
+  const seenOriginalKeys = new Set<string>();
+  const deduplicatedGlossaries: GlossaryItem[] = [];
+
+  for (let g = 0; g < glossaries.length; g++) {
+    const item = glossaries[g];
+    const key = (item.istilah_asli || '').trim().toLowerCase();
+    if (!key) continue;
+    if (!seenOriginalKeys.has(key)) {
+      seenOriginalKeys.add(key);
+      deduplicatedGlossaries.push(item);
+    }
+  }
+
+  // 1. Collect all match spans for each deduplicated glossary item
   interface MatchedGlossaryEntry {
     item: GlossaryItem;
     maxTermLen: number;
@@ -271,8 +287,8 @@ export function filterRelevantGlossaries(
 
   const matchedEntries: MatchedGlossaryEntry[] = [];
 
-  for (let g = 0; g < glossaries.length; g++) {
-    const item = glossaries[g];
+  for (let g = 0; g < deduplicatedGlossaries.length; g++) {
+    const item = deduplicatedGlossaries[g];
     const candidates = getParsedCandidates(item.istilah_asli);
     const itemSpans: MatchSpan[] = [];
     let maxTermLen = 0;
@@ -294,14 +310,19 @@ export function filterRelevantGlossaries(
   // 2. Sort matched entries by candidate length descending (longest match first)
   matchedEntries.sort((a, b) => b.maxTermLen - a.maxTermLen);
 
-  // 3. Subsumption Deduplication:
+  // 3. Subsumption Deduplication & Unique Injected Term Enforcement:
   // An item is only injected if it has at least 1 independent occurrence
-  // that is NOT wholly contained within an already-accepted longer entity match
+  // that is NOT wholly contained within an already-accepted longer entity match,
+  // and its original term has not already been injected.
   const acceptedSpans: MatchSpan[] = [];
+  const seenInjectedKeys = new Set<string>();
   const result: GlossaryItem[] = [];
 
   for (let i = 0; i < matchedEntries.length; i++) {
     const entry = matchedEntries[i];
+    const termKey = (entry.item.istilah_asli || '').trim().toLowerCase();
+    if (seenInjectedKeys.has(termKey)) continue;
+
     let hasIndependentOccurrence = false;
 
     for (let s = 0; s < entry.spans.length; s++) {
@@ -316,6 +337,7 @@ export function filterRelevantGlossaries(
     }
 
     if (hasIndependentOccurrence) {
+      seenInjectedKeys.add(termKey);
       result.push(entry.item);
       acceptedSpans.push(...entry.spans);
     }

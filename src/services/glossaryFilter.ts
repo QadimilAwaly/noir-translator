@@ -144,18 +144,35 @@ export function partitionGlossaryByQuality(items: GlossaryItem[]): {
 } {
   const clean: GlossaryItem[] = [];
   const removed: Array<{ item: GlossaryItem; reason: string }> = [];
+  const seenOriginalMap = new Map<string, GlossaryItem>();
 
   for (const item of items) {
     const validation = validateGlossaryCandidate(item);
-    if (validation.valid) {
-      clean.push({
-        ...item,
-        istilah_asli: validation.cleanedTerm,
-        istilah_terjemahan: validation.cleanedTranslation,
-      });
-    } else {
+    if (!validation.valid) {
       removed.push({ item, reason: validation.reason || 'Kriteria kualitas tidak terpenuhi' });
+      continue;
     }
+
+    const normKey = validation.cleanedTerm.toLowerCase();
+    const existing = seenOriginalMap.get(normKey);
+
+    if (existing) {
+      // Duplicate detected! Preserve the one saved earlier (existing in map), reject later duplicate
+      removed.push({
+        item,
+        reason: `Duplikat istilah asli (sudah terdaftar lebih awal dengan terjemahan: "${existing.istilah_terjemahan}")`,
+      });
+      continue;
+    }
+
+    const cleanedItem: GlossaryItem = {
+      ...item,
+      istilah_asli: validation.cleanedTerm,
+      istilah_terjemahan: validation.cleanedTranslation,
+    };
+
+    seenOriginalMap.set(normKey, cleanedItem);
+    clean.push(cleanedItem);
   }
 
   return { clean, removed };

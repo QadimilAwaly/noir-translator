@@ -477,17 +477,31 @@ export function getStoredGlossaries(novelId: string): GlossaryItem[] {
   return inMemoryLibrary.glossaries.filter((g) => g.novel_id === novelId);
 }
 
+export function deduplicateGlossaries(gloss: GlossaryItem[]): GlossaryItem[] {
+  const seen = new Set<string>();
+  const result: GlossaryItem[] = [];
+  for (const g of gloss) {
+    const key = (g.istilah_asli || '').trim().toLowerCase();
+    if (!key) continue;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(g);
+    }
+  }
+  return result;
+}
+
 export function saveStoredGlossaries(gloss: GlossaryItem[], novelId?: string) {
-  const targetId = novelId || (gloss.length > 0 ? gloss[0].novel_id : undefined);
+  const cleanGloss = deduplicateGlossaries(gloss);
+  const targetId = novelId || (cleanGloss.length > 0 ? cleanGloss[0].novel_id : undefined);
   if (targetId) {
     const all = inMemoryLibrary.glossaries.filter((g) => g.novel_id !== targetId);
-    inMemoryLibrary.glossaries = [...all, ...gloss];
+    inMemoryLibrary.glossaries = [...all, ...cleanGloss];
   } else {
-    inMemoryLibrary.glossaries = gloss;
+    inMemoryLibrary.glossaries = cleanGloss;
   }
   syncServerStorage({ glossaries: inMemoryLibrary.glossaries }, true);
 }
-
 export function deleteStoredGlossary(glossaryId: string, novelId?: string): GlossaryItem[] {
   inMemoryLibrary.glossaries = inMemoryLibrary.glossaries.filter((g) => g.id !== glossaryId);
   syncServerStorage({ glossaries: inMemoryLibrary.glossaries }, true);

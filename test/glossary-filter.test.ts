@@ -351,3 +351,44 @@ describe('Glossary Extraction Noise Filter (Quality Criteria)', () => {
   });
 });
 
+describe('Glossary Duplicate Prevention (Preserve Earlier Saved)', () => {
+  test('filterRelevantGlossaries preserves earlier saved translation when duplicate istilah_asli detected', () => {
+    const glossaries = [
+      { id: '1', novel_id: 'n1', istilah_asli: '涼', istilah_terjemahan: 'Ryou', kategori: 'Nama' as const },
+      { id: '2', novel_id: 'n1', istilah_asli: '涼', istilah_terjemahan: 'Ryo', kategori: 'Nama' as const },
+      { id: '3', novel_id: 'n1', istilah_asli: '涼', istilah_terjemahan: 'Suzushi', kategori: 'Nama' as const },
+    ];
+    const text = '涼は、中央神殿から自治庁前に続く通りを走り始めた。';
+    const result = filterRelevantGlossaries(text, glossaries);
+
+    assert.equal(result.length, 1, 'Only one item for 涼 should be injected');
+    assert.equal(result[0].id, '1', 'Must preserve the item saved earlier (id: 1)');
+    assert.equal(result[0].istilah_terjemahan, 'Ryou', 'Must preserve the earlier translation "Ryou"');
+  });
+
+  test('filterRelevantGlossaries deduplicates case-insensitively for Latin terms', () => {
+    const glossaries = [
+      { id: '1', novel_id: 'n1', istilah_asli: 'Dan', istilah_terjemahan: 'Dan (Old)', kategori: 'Nama' as const },
+      { id: '2', novel_id: 'n1', istilah_asli: 'dan', istilah_terjemahan: 'Daniel (New)', kategori: 'Nama' as const },
+    ];
+    const text = 'Dan looked around with a smile.';
+    const result = filterRelevantGlossaries(text, glossaries);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].istilah_terjemahan, 'Dan (Old)', 'Must preserve the first saved version');
+  });
+
+  test('partitionGlossaryByQuality rejects later duplicates with descriptive reason', () => {
+    const items = [
+      { id: '1', novel_id: 'n1', istilah_asli: '王都騒乱', istilah_terjemahan: 'Royal Capital Disturbance', kategori: 'Istilah Khusus' as const },
+      { id: '2', novel_id: 'n1', istilah_asli: '王都騒乱', istilah_terjemahan: 'Capital Riot', kategori: 'Istilah Khusus' as const },
+    ];
+    const { clean, removed } = partitionGlossaryByQuality(items);
+
+    assert.equal(clean.length, 1);
+    assert.equal(clean[0].istilah_terjemahan, 'Royal Capital Disturbance', 'Earlier saved item kept in clean');
+    assert.equal(removed.length, 1);
+    assert.ok(removed[0].reason.includes('Duplikat'), 'Reason must mention Duplikat');
+  });
+});
+

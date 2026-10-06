@@ -1543,12 +1543,25 @@ function ensurePromptTemplateFile(): void {
       updatedRefs = [...otherRefs, ...data.references];
     }
 
-    // Glossaries: merge while preserving other novels' glossaries
+    // Glossaries: merge while preserving other novels' glossaries and preserving earlier saved duplicates
     let updatedGloss = current.glossaries;
     if (Array.isArray(data.glossaries) && data.glossaries.length > 0) {
       const syncedNovelIds = new Set(data.glossaries.map((g) => g.novel_id));
       const otherGloss = current.glossaries.filter((g) => !syncedNovelIds.has(g.novel_id));
-      updatedGloss = [...otherGloss, ...data.glossaries];
+
+      // Deduplicate incoming glossaries: keep the earlier saved entry if duplicate istilah_asli detected
+      const seenGlossKeys = new Set<string>();
+      const dedupedIncoming: StoredGlossary[] = [];
+      for (const item of data.glossaries) {
+        const key = (item.istilah_asli || '').trim().toLowerCase();
+        if (!key) continue;
+        if (!seenGlossKeys.has(key)) {
+          seenGlossKeys.add(key);
+          dedupedIncoming.push(item);
+        }
+      }
+
+      updatedGloss = [...otherGloss, ...dedupedIncoming];
     }
     // 3. Detect renamed novels and rename physical directory
     if (Array.isArray(data.novels)) {
@@ -2401,6 +2414,7 @@ Kembalikan respon DALAM FORMAT JSON SAJA dengan skema:
 
       const rawTerms: unknown[] = Array.isArray(parsed.terms) ? parsed.terms : [];
       const cleanTerms: ExtractedTerm[] = [];
+      const seenExtractedKeys = new Set<string>();
 
       for (const item of rawTerms) {
         if (!item || typeof item !== 'object') continue;
@@ -2412,6 +2426,10 @@ Kembalikan respon DALAM FORMAT JSON SAJA dengan skema:
         });
 
         if (validation.valid) {
+          const key = validation.cleanedTerm.toLowerCase();
+          if (seenExtractedKeys.has(key)) continue;
+          seenExtractedKeys.add(key);
+
           const kategoriValid = (typeof it.kategori === 'string' && ['Nama', 'Tempat', 'Jurus/Sekte', 'Item', 'Istilah Khusus'].includes(it.kategori))
             ? (it.kategori as 'Nama' | 'Tempat' | 'Jurus/Sekte' | 'Item' | 'Istilah Khusus')
             : 'Istilah Khusus';
