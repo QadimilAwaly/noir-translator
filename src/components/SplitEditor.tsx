@@ -34,6 +34,7 @@ interface SplitEditorProps {
   onAddChapter?: () => void;
   isTranslating: boolean;
   isExtracting: boolean;
+  isChapterLoading?: boolean;
   promptStats?: {
     glossaryCount: number;
     totalGlossaries?: number;
@@ -53,6 +54,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   onAddChapter,
   isTranslating,
   isExtracting,
+  isChapterLoading = false,
   promptStats,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -391,12 +393,19 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
             </span>
           </div>
 
-          <textarea
-            value={activeChapter.teks_asli}
-            onChange={(e) => onUpdateChapterText(e.target.value, activeChapter.teks_terjemahan)}
-            placeholder={`Tempel atau ketik teks novel asli dalam ${activeNovel.bahasa_sumber} di sini...`}
-            className={`flex-1 p-3 bg-transparent text-gray-300 resize-none focus:outline-none font-serif ${fontClasses} placeholder-gray-600 border-none`}
-          />
+          {isChapterLoading ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-2 select-none">
+              <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin" />
+              <span className="text-xs text-indigo-300 font-medium">Memuat isi bab dari disk...</span>
+            </div>
+          ) : (
+            <textarea
+              value={activeChapter.teks_asli}
+              onChange={(e) => onUpdateChapterText(e.target.value, activeChapter.teks_terjemahan)}
+              placeholder={`Tempel atau ketik teks novel asli dalam ${activeNovel.bahasa_sumber} di sini...`}
+              className={`flex-1 p-3 bg-transparent text-gray-300 resize-none focus:outline-none font-serif ${fontClasses} placeholder-gray-600 border-none`}
+            />
+          )}
         </div>
 
         {/* Right Column: Teks Terjemahan LLM */}
@@ -443,7 +452,12 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           </div>
 
           {/* Editor Mode vs Preview Mode */}
-          {viewMode === 'editor' ? (
+          {isChapterLoading ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-2 select-none">
+              <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin" />
+              <span className="text-xs text-gray-400">Menyiapkan hasil terjemahan...</span>
+            </div>
+          ) : viewMode === 'editor' ? (
             <textarea
               value={activeChapter.teks_terjemahan}
               onChange={(e) => onUpdateChapterText(activeChapter.teks_asli, e.target.value)}

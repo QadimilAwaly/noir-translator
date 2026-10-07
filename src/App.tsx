@@ -262,6 +262,9 @@ export default function App() {
   // Handler: Select Chapter
   const handleSelectChapter = (id: string) => {
     chapterEditor.setActiveChapterId(id);
+    if (activeNovelId) {
+      chapterEditor.loadChapterContent(id, activeNovelId);
+    }
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setIsLeftSidebarOpen(false);
     }
@@ -643,6 +646,7 @@ export default function App() {
           onAddChapter={() => setIsNewChapterModalOpen(true)}
           isTranslating={isTranslating}
           isExtracting={isExtracting}
+          isChapterLoading={chapterEditor.isChapterLoading}
           promptStats={promptStats}
         />
 

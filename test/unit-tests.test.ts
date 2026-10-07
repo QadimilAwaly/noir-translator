@@ -316,12 +316,20 @@ describe('Server-Backed Persistent Storage & Config Stability', () => {
     const serverContent = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf-8');
 
     assert.ok(serverContent.includes("app.get('/api/storage'"), 'server.ts should have GET /api/storage');
+    assert.ok(serverContent.includes("app.get('/api/chapter'"), 'server.ts should have GET /api/chapter for instant single chapter loading');
     assert.ok(serverContent.includes("app.post('/api/storage/sync'"), 'server.ts should have POST /api/storage/sync');
     assert.ok(serverContent.includes('library_index.json'), 'server.ts should persist to library_index.json');
     assert.ok(serverContent.includes('readLibraryStorage'), 'server.ts should have readLibraryStorage');
     assert.ok(serverContent.includes('saveLibraryStorage'), 'server.ts should have saveLibraryStorage');
   });
 
+  test('api.ts should provide fetchSingleChapterApi', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const apiContent = fs.readFileSync(path.join(process.cwd(), 'src', 'services', 'api.ts'), 'utf-8');
+    assert.ok(apiContent.includes('fetchSingleChapterApi'), 'api.ts should export fetchSingleChapterApi');
+    assert.ok(apiContent.includes('/api/chapter'), 'api.ts should call /api/chapter');
+  });
   test('storage.ts should provide fetchServerStorage and syncServerStorage', () => {
     const fs = require('fs');
     const path = require('path');

@@ -16,6 +16,7 @@ import {
 } from '../services/storage';
 import { filterRelevantGlossaries, filterRelevantReferences } from '../services/contextFilter';
 import { compareChapterNumbers } from '../services/chapterParser';
+import { fetchSingleChapterApi } from '../services/api';
 
 export interface PromptStats {
   glossaryCount: number;
@@ -32,8 +33,10 @@ export interface UseChapterEditorReturn {
   synopsis: string;
   writingStyle: string;
   isDirty: boolean;
+  isChapterLoading: boolean;
   promptStats: PromptStats;
   setActiveChapterId: (id: string | null) => void;
+  loadChapterContent: (chapterId: string, novelId: string) => Promise<void>;
   setChapters: React.Dispatch<React.SetStateAction<Chapter[]>>;
   setReferences: React.Dispatch<React.SetStateAction<ReferenceItem[]>>;
   setGlossaries: React.Dispatch<React.SetStateAction<GlossaryItem[]>>;
@@ -62,7 +65,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
   const [synopsis, setSynopsis] = useState<string>('');
   const [writingStyle, setWritingStyle] = useState<string>('');
   const [isDirty, setIsDirty] = useState<boolean>(false);
-
+  const [isChapterLoading, setIsChapterLoading] = useState<boolean>(false);
   const activeChapter = useMemo(() => {
     return chapters.find((c) => c.id === activeChapterId) || null;
   }, [chapters, activeChapterId]);
@@ -92,7 +95,11 @@ export function useChapterEditor(): UseChapterEditorReturn {
     const loadedChapters = [...rawChapters].sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
     setChapters(loadedChapters);
     if (loadedChapters.length > 0) {
-      setActiveChapterId((prev) => (loadedChapters.some((c) => c.id === prev) ? prev : loadedChapters[0].id));
+      const targetChap = loadedChapters.find((c) => c.id === activeChapterId) || loadedChapters[0];
+      setActiveChapterId(targetChap.id);
+      if (!targetChap.teks_asli && !targetChap.teks_terjemahan) {
+        loadChapterContent(targetChap.id, novelId);
+      }
     } else {
       setActiveChapterId(null);
     }
@@ -132,6 +139,43 @@ export function useChapterEditor(): UseChapterEditorReturn {
     setIsDirty(false);
   }, []);
 
+  const loadChapterContent = useCallback(async (chapterId: string, novelId: string) => {
+    let alreadyHasText = false;
+    setChapters((prev) => {
+      const found = prev.find((c) => c.id === chapterId);
+      if (found && (found.teks_asli || found.teks_terjemahan)) {
+        alreadyHasText = true;
+      }
+      return prev;
+    });
+    if (alreadyHasText) return;
+
+    setIsChapterLoading(true);
+    try {
+      const fetched = await fetchSingleChapterApi(novelId, chapterId);
+      if (fetched) {
+        setChapters((prev) =>
+          prev.map((c) => {
+            const isMatch = c.id === chapterId || (c.novel_id === novelId && c.nomor_chapter === fetched.nomor_chapter);
+            if (isMatch) {
+              return {
+                ...c,
+                teks_asli: fetched.teks_asli,
+                teks_terjemahan: fetched.teks_terjemahan,
+                status_pengerjaan: fetched.status_pengerjaan || c.status_pengerjaan,
+                judul_chapter: fetched.judul_chapter || c.judul_chapter,
+              };
+            }
+            return c;
+          })
+        );
+      }
+    } catch (e) {
+      console.warn('[useChapterEditor] Failed loading single chapter content:', e);
+    } finally {
+      setIsChapterLoading(false);
+    }
+  }, []);
   const updateChapterText = useCallback((chapterId: string, original: string, translated: string, novelId?: string) => {
     const allChapters = getStoredChapters();
     let updatedChapter: Chapter | undefined;
@@ -364,5 +408,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
     addReferenceItem,
     deleteReferenceItem,
     markClean,
+    isChapterLoading,
+    loadChapterContent,
   };
 }

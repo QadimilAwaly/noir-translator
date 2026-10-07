@@ -1806,6 +1806,150 @@ function ensurePromptTemplateFile(): void {
     }
   });
 
+  // API Route: Fast Single-Chapter Fetch for Instant Editor Loading
+  app.get('/api/chapter', rateLimit(150, 60000), async (req, res) => {
+    try {
+      const novelId = typeof req.query.novel_id === 'string' ? req.query.novel_id.trim() : '';
+      if (!novelId) {
+        return res.status(400).json({ error: 'novel_id wajib disertakan.' });
+      }
+
+      const libraryBase = getLibraryStorageDir();
+      const current = readLibraryStorage();
+      const novel = current.novels.find((n) => n.id === novelId);
+      if (!novel) {
+        return res.status(404).json({ error: 'Novel tidak ditemukan.' });
+      }
+
+      const novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
+      if (!fs.existsSync(novelFolder)) {
+        return res.status(404).json({ error: 'Folder novel tidak ditemukan di disk.' });
+      }
+
+      // Determine chapter number
+      let targetNum: number | null = null;
+      if (typeof req.query.chapter_number === 'string') {
+        const parsed = parseFloat(req.query.chapter_number);
+        if (!isNaN(parsed)) targetNum = parsed;
+      }
+
+      if (targetNum === null && typeof req.query.chapter_id === 'string') {
+        const chapId = req.query.chapter_id.trim();
+        const inIndex = current.chapters.find((c) => c.id === chapId && c.novel_id === novelId);
+        if (inIndex) {
+          targetNum = inIndex.nomor_chapter;
+        } else {
+          const lastNumMatch = chapId.match(/-(\d+(?:\.\d+)?)$/);
+          if (lastNumMatch) {
+            targetNum = parseFloat(lastNumMatch[1]);
+          }
+        }
+      }
+
+      if (targetNum === null) {
+        return res.status(400).json({ error: 'chapter_number atau chapter_id wajib disertakan.' });
+      }
+
+      const padNum = formatChapterFilenameNumber(targetNum);
+      const possibleFileNames = [
+        `Chapter_${padNum}.md`,
+        `Chapter_${padNum}.txt`,
+        `Chapter_${targetNum}.md`,
+        `Chapter_${targetNum}.txt`,
+        `${padNum}.md`,
+        `${targetNum}.md`,
+      ];
+
+      let targetFilePath = '';
+      for (const fn of possibleFileNames) {
+        const p = path.join(novelFolder, fn);
+        if (fs.existsSync(p)) {
+          targetFilePath = p;
+          break;
+        }
+      }
+
+      if (!targetFilePath && fs.existsSync(novelFolder)) {
+        const files = fs.readdirSync(novelFolder);
+        for (const file of files) {
+          if ((file.endsWith('.md') || file.endsWith('.txt')) && !file.startsWith('.')) {
+            const extracted = extractChapterNumber(file);
+            if (extracted === targetNum) {
+              targetFilePath = path.join(novelFolder, file);
+              break;
+            }
+          }
+        }
+      }
+
+      if (!targetFilePath) {
+        return res.status(404).json({ error: `File bab ${targetNum} tidak ditemukan di disk.` });
+      }
+
+      const content = await fs.promises.readFile(targetFilePath, 'utf-8');
+
+      let title = `Chapter ${targetNum}`;
+      const titleMatch = content.match(CHAPTER_TITLE_REGEX);
+      if (titleMatch && titleMatch[1]) {
+        title = titleMatch[1].trim();
+      } else {
+        const firstLine = content.split('\n').map((l) => l.trim()).find((l) => l.length > 0 && !l.startsWith('>'));
+        if (firstLine && firstLine.length <= 80 && !firstLine.startsWith('---') && !firstLine.startsWith('#')) {
+          title = firstLine.replace(/^(?:Chapter|Bab|Episode|Ep)\s*\d+[:\s\-]*/i, '').trim() || firstLine;
+        }
+      }
+
+      let statusPengerjaan = 'Belum';
+      const statusMatch = content.match(CHAPTER_STATUS_REGEX);
+      if (statusMatch && statusMatch[1]) {
+        statusPengerjaan = statusMatch[1].trim();
+      }
+
+      let originalText = '';
+      let translatedText = '';
+
+      const transMatch = content.match(CHAPTER_TRANS_REGEX);
+      if (transMatch) {
+        translatedText = transMatch[1].trim();
+      }
+
+      const origMatch = content.match(CHAPTER_ORIG_REGEX);
+      if (origMatch) {
+        originalText = origMatch[1].trim();
+      }
+
+      if (!originalText && !translatedText) {
+        originalText = content;
+      }
+
+      if (!translatedText && content.includes('*(Belum diterjemahkan)*')) {
+        translatedText = '';
+      }
+
+      if (translatedText.length > 0 && statusPengerjaan === 'Belum') {
+        statusPengerjaan = 'Selesai';
+      }
+
+      const chapter = {
+        id: `chap-${novelId}-${targetNum}`,
+        novel_id: novelId,
+        nomor_chapter: targetNum,
+        judul_chapter: title,
+        teks_asli: originalText,
+        teks_terjemahan: translatedText,
+        status_pengerjaan: statusPengerjaan,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      return res.json({ status: 'success', chapter });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Error fetching single chapter:', msg);
+      return res.status(500).json({ error: 'Gagal memuat file bab dari disk server.' });
+    }
+  });
+
   // API Route: Sync Full/Partial Storage to Disk
   app.post('/api/storage/sync', rateLimit(60, 60000), async (req, res) => {
     try {
