@@ -162,69 +162,14 @@ export default function App() {
     showToast(`Pengaturan tersimpan ke config.json (${newConfig.provider.toUpperCase()}: ${newConfig.model}).`);
   };
 
-  // Keep isDirty ref current for stable focus handler (Race condition fix — audit #8)
-  const isDirtyRef = useRef(chapterEditor.isDirty);
+  // Initial Load of Novels on Mount
   useEffect(() => {
-    isDirtyRef.current = chapterEditor.isDirty;
-  }, [chapterEditor.isDirty]);
-
-  // 1. Initial Load of Novels & Window Focus Auto-Reload with isDirty protection & Focus Cooldown (Finding #03)
-  const FOCUS_COOLDOWN_MS = 30000; // 30s cooldown for window refocus
-  const lastFocusTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    // Initial mount: muat data langsung (force)
     reloadLibraryFromDisk(undefined, { force: true }).then((serverData) => {
       if (serverData && serverData.novels.length > 0) {
         const targetId = activeNovelId || serverData.novels[0].id;
         chapterEditor.reloadFromServer(targetId, serverData);
       }
     });
-
-    const handleFocus = () => {
-      const now = Date.now();
-      if (lastFocusTimeRef.current !== 0 && now - lastFocusTimeRef.current < FOCUS_COOLDOWN_MS) {
-        // Skip focus reload jika baru saja refetch dalam window cooldown (30s)
-        return;
-      }
-
-      if (isDirtyRef.current) {
-        // Jangan overwrite uncommitted edits; beri tahu user (audit #8)
-        showToast({
-          message: 'Ada perubahan belum disimpan di chapter. Muat ulang dari disk akan menimpa edit Anda.',
-          actions: [
-            {
-              label: 'Muat Ulang (Buang Edit)',
-              onClick: () => {
-                chapterEditor.markClean();
-                lastFocusTimeRef.current = Date.now();
-                reloadLibraryFromDisk(undefined, { force: true }).then((serverData) => {
-                  if (serverData && activeNovelId) {
-                    chapterEditor.reloadFromServer(activeNovelId, serverData);
-                  }
-                });
-              },
-            },
-            {
-              label: 'Batal',
-              onClick: () => {},
-            },
-          ],
-        });
-        return;
-      }
-
-      lastFocusTimeRef.current = now;
-      reloadLibraryFromDisk({ cooldownMs: FOCUS_COOLDOWN_MS }).then((serverData) => {
-        // Hanya reload chapterEditor jika data di server benar-benar berubah
-        if (serverData && !serverData._notModified && activeNovelId) {
-          chapterEditor.reloadFromServer(activeNovelId, serverData);
-        }
-      });
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   // 2. Load Chapters, References, Glossaries when Active Novel changes
