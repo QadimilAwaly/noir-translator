@@ -23,12 +23,24 @@ describe('Config & Model Flexibility Verification', () => {
       'server.ts must support DEFAULT_GEMINI_MODEL or DEFAULT_MODEL'
     );
     assert.ok(
-      serverCode.includes('process.env.GEMINI_FALLBACK_MODEL'),
-      'server.ts must support GEMINI_FALLBACK_MODEL'
-    );
-    assert.ok(
       serverCode.includes('process.env.OPENROUTER_API_URL') || serverCode.includes('process.env.OPENROUTER_BASE_URL'),
       'server.ts must support OPENROUTER_API_URL / OPENROUTER_BASE_URL'
+    );
+  });
+
+  test('server.ts does NOT perform automatic model fallback on Gemini failures', () => {
+    const serverCode = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf-8');
+    assert.ok(
+      !serverCode.includes('callGeminiWithRetryAndFallback'),
+      'server.ts must not have callGeminiWithRetryAndFallback'
+    );
+    assert.ok(
+      !serverCode.includes('fallbackModel'),
+      'server.ts must not substitute fallback models'
+    );
+    assert.ok(
+      serverCode.includes('callGeminiWithRetry'),
+      'server.ts must use callGeminiWithRetry strictly for the selected model'
     );
   });
 

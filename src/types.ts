@@ -101,7 +101,6 @@ export interface ServerConfig {
   default_provider: AIProvider;
   default_model: string;
   default_openrouter_model?: string;
-  gemini_fallback_model?: string;
   has_gemini_api_key?: boolean;
   has_openrouter_api_key?: boolean;
 }

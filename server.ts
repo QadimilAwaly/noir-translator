@@ -535,8 +535,8 @@ function ensurePromptTemplateFile(): void {
     genAIClientCache.set(apiKey, client);
     return client;
   };
-  // Helper: Gemini Call with Automatic Retry & Model Fallback on 503/High Demand
-  const callGeminiWithRetryAndFallback = async ({
+  // Helper: Gemini Call with Automatic Retry on Transient Errors (Strictly user-selected model, NO auto fallback)
+  const callGeminiWithRetry = async ({
     model,
     apiKeyOverride,
     prompt,
@@ -549,80 +549,59 @@ function ensurePromptTemplateFile(): void {
     prompt: string;
     systemInstruction?: string;
     responseMimeType?: string;
-    responseSchema?: any;
+    responseSchema?: unknown;
   }) => {
     const ai = await getGenAI(apiKeyOverride);
 
-    // Build fallback list if primary model fails with 503
     const config = readConfig();
-    const primaryModel =
+    const targetModel =
       model ||
       config.default_model ||
       process.env.DEFAULT_GEMINI_MODEL ||
       process.env.DEFAULT_MODEL ||
-      'gemini-2.5-flash';
-    const fallbackModel =
-      config.gemini_fallback_model ||
-      process.env.GEMINI_FALLBACK_MODEL ||
-      (primaryModel === 'gemini-2.5-flash'
-        ? 'gemini-2.5-pro'
-        : primaryModel !== 'gemini-2.5-flash'
-        ? 'gemini-2.5-flash'
-        : '');
+      'gemini-3.5-flash-lite';
 
-    // Build fallback list if primary model fails with transient error
-    const modelsToTry = [primaryModel];
-    if (fallbackModel && !modelsToTry.includes(fallbackModel)) {
-      modelsToTry.push(fallbackModel);
-    }
+    let lastError: unknown = null;
 
-    let lastError: any = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const reqConfig: Record<string, unknown> = { temperature: 0.3 };
+        if (systemInstruction) reqConfig.systemInstruction = systemInstruction;
+        if (responseMimeType) reqConfig.responseMimeType = responseMimeType;
+        if (responseSchema) reqConfig.responseSchema = responseSchema;
 
-    for (const currentModel of modelsToTry) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const config: any = { temperature: 0.3 };
-          if (systemInstruction) config.systemInstruction = systemInstruction;
-          if (responseMimeType) config.responseMimeType = responseMimeType;
-          if (responseSchema) config.responseSchema = responseSchema;
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: prompt,
+          config: reqConfig,
+        });
 
-          const response = await ai.models.generateContent({
-            model: currentModel,
-            contents: prompt,
-            config,
-          });
-
-          if (response.text) {
-            return response.text;
-          }
-        } catch (err: any) {
-          lastError = err;
-          const errStr = String(err?.message || err);
-          const isTransient =
-            errStr.includes('503') ||
-            errStr.includes('UNAVAILABLE') ||
-            errStr.includes('high demand') ||
-            errStr.includes('429') ||
-            errStr.includes('RESOURCE_EXHAUSTED');
-          if (isTransient && attempt < 2) {
-            logRetryWarn(`[Gemini Attempt ${attempt} on ${currentModel}] Failed: ${errStr}`, attempt);
-            await sleep(1500 * attempt);
-          } else if (!isTransient) {
-            // Non-transient error (e.g., bad API key, prompt error)
-            throw err;
-          }
+        if (response.text) {
+          return response.text;
+        }
+      } catch (err: unknown) {
+        lastError = err;
+        const errStr = err instanceof Error ? err.message : String(err);
+        const isTransient =
+          errStr.includes('503') ||
+          errStr.includes('UNAVAILABLE') ||
+          errStr.includes('high demand') ||
+          errStr.includes('429') ||
+          errStr.includes('RESOURCE_EXHAUSTED');
+        if (isTransient && attempt < 2) {
+          logRetryWarn(`[Gemini Attempt ${attempt} on ${targetModel}] Failed: ${errStr}`, attempt);
+          await sleep(1500 * attempt);
+        } else {
+          // Non-transient or retries exhausted: throw the exact error for this model directly
+          throw err;
         }
       }
     }
 
-    const lastMsg = String(lastError?.message || lastError);
-    if (lastMsg.includes('503') || lastMsg.includes('high demand') || lastMsg.includes('UNAVAILABLE')) {
-      throw new Error(
-        'Layanan Google Gemini sedang mengalami lonjakan beban tinggi (503 High Demand). Silakan coba beberapa saat lagi, atau alihkan provider ke OpenRouter / Gemini 2.5 Flash melalui tombol Pengaturan Model di sudut kanan atas.'
-      );
+    if (lastError) {
+      throw lastError;
     }
-
-    throw lastError || new Error('Gagal menghubungi layanan Gemini AI.');
+    throw new Error(`[Gemini] Gagal menghubungi layanan Gemini AI (${targetModel}).`);
   };
 
   // Helper: Extract first balanced JSON block { ... } or [ ... ]
@@ -744,7 +723,6 @@ function ensurePromptTemplateFile(): void {
     default_provider: string;
     default_model: string;
     default_openrouter_model?: string;
-    gemini_fallback_model?: string;
     gemini_api_key?: string;
     openrouter_api_key?: string;
     [key: string]: unknown;
@@ -753,9 +731,8 @@ function ensurePromptTemplateFile(): void {
   const getDefaultConfig = (): AppConfig => ({
     global_storage_path: DEFAULT_GLOBAL_STORAGE_PATH,
     default_provider: process.env.DEFAULT_PROVIDER || 'gemini',
-    default_model: process.env.DEFAULT_MODEL || process.env.DEFAULT_GEMINI_MODEL || 'gemini-2.5-flash',
+    default_model: process.env.DEFAULT_MODEL || process.env.DEFAULT_GEMINI_MODEL || 'gemini-3.5-flash-lite',
     default_openrouter_model: process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash',
-    gemini_fallback_model: process.env.GEMINI_FALLBACK_MODEL || '',
     gemini_api_key: process.env.GEMINI_API_KEY || '',
     openrouter_api_key: process.env.OPENROUTER_API_KEY || '',
   });
@@ -797,7 +774,6 @@ function ensurePromptTemplateFile(): void {
       default_provider: cfg.default_provider,
       default_model: cfg.default_model,
       default_openrouter_model: cfg.default_openrouter_model || process.env.DEFAULT_OPENROUTER_MODEL || 'google/gemini-2.5-flash',
-      gemini_fallback_model: cfg.gemini_fallback_model || process.env.GEMINI_FALLBACK_MODEL || '',
       has_gemini_api_key: Boolean(cfg.gemini_api_key),
       has_openrouter_api_key: Boolean(cfg.openrouter_api_key),
     };
@@ -1778,7 +1754,6 @@ function ensurePromptTemplateFile(): void {
       if (typeof body.default_provider === 'string') updated.default_provider = body.default_provider;
       if (typeof body.default_model === 'string') updated.default_model = body.default_model;
       if (typeof body.default_openrouter_model === 'string') updated.default_openrouter_model = body.default_openrouter_model;
-      if (typeof body.gemini_fallback_model === 'string') updated.gemini_fallback_model = body.gemini_fallback_model;
       if (body.gemini_api_key !== undefined) updated.gemini_api_key = String(body.gemini_api_key);
       if (body.openrouter_api_key !== undefined) updated.openrouter_api_key = String(body.openrouter_api_key);
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), 'utf-8');
@@ -2373,7 +2348,7 @@ function ensurePromptTemplateFile(): void {
           prompt,
         });
       } else {
-        translatedText = await callGeminiWithRetryAndFallback({
+        translatedText = await callGeminiWithRetry({
           model,
           apiKeyOverride,
           systemInstruction,
@@ -2503,7 +2478,7 @@ Kembalikan respon DALAM FORMAT JSON SAJA dengan skema:
           });
         }
       } else {
-        const jsonText = await callGeminiWithRetryAndFallback({
+        const jsonText = await callGeminiWithRetry({
           model,
           apiKeyOverride,
           systemInstruction: extractSystemInstruction,

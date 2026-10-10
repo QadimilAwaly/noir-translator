@@ -43,15 +43,15 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
   const [storagePath, setStoragePath] = useState<string>(globalStoragePath);
   if (!isOpen) return null;
 
-  const fallbackGemini = defaultGeminiModel || 'gemini-2.5-flash';
-  const fallbackOpenrouter = defaultOpenrouterModel || 'google/gemini-2.5-flash';
+  const defaultGemini = defaultGeminiModel || 'gemini-3.5-flash-lite';
+  const defaultOpenrouter = defaultOpenrouterModel || 'google/gemini-2.5-flash';
 
   const handleProviderChange = (newProvider: AIProvider) => {
     setProvider(newProvider);
     if (newProvider === 'openrouter' && !model.includes('/')) {
-      setModel(fallbackOpenrouter);
+      setModel(defaultOpenrouter);
     } else if (newProvider === 'gemini' && model.includes('/')) {
-      setModel(fallbackGemini);
+      setModel(defaultGemini);
     }
   };
 
@@ -60,7 +60,7 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
     onSaveConfig(
       {
         provider,
-        model: model.trim() || (provider === 'openrouter' ? fallbackOpenrouter : fallbackGemini),
+        model: model.trim() || (provider === 'openrouter' ? defaultOpenrouter : defaultGemini),
         openrouterApiKey: openrouterKey.trim(),
         geminiApiKey: geminiKey.trim(),
       },
@@ -167,14 +167,14 @@ export const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder={provider === 'openrouter' ? 'Contoh: anthropic/claude-3.5-sonnet atau deepseek/deepseek-chat' : `Contoh: ${fallbackGemini}`}
+                placeholder={provider === 'openrouter' ? 'Contoh: anthropic/claude-3.5-sonnet atau deepseek/deepseek-chat' : `Contoh: ${defaultGemini}`}
                 className="w-full p-2 bg-[#0F1113] border border-gray-800 rounded text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
                 required
               />
               <p className="text-[10px] text-gray-500">
                 {provider === 'openrouter'
                   ? 'Ketik ID model persis dari OpenRouter (contoh: "qwen/qwen-2.5-72b-instruct", "mistralai/mistral-large").'
-                  : `Ketik ID model Gemini (contoh: "${fallbackGemini}", "gemini-2.5-pro", "gemini-3.5-flash-lite").`}
+                  : `Ketik ID model Gemini (contoh: "${defaultGemini}", "gemini-3.8-flash", "gemini-2.5-pro").`}
               </p>
             </div>
           </div>
