@@ -1,6 +1,6 @@
 {
   "name": "noir-translator",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "High-Performance Offline-First AI Novel Translator (Companion for Noir Reader)",
   "author": "Qadimil Awaly",
   "license": "MIT",
@@ -13,8 +13,13 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --minify-whitespace --minify-syntax --sourcemap --outfile=dist/server.js",
-    "start": "node --optimize-for-size --max-semi-space-size=2 --max-old-space-size=64 dist/server.js",
-    "start:prod": "npm run build && NODE_ENV=production node --optimize-for-size --max-semi-space-size=2 --max-old-space-size=64 dist/server.js",
+    "start": "node --max-old-space-size=256 dist/server.js",
+    "start:prod": "npm run build && NODE_ENV=production node --max-old-space-size=256 dist/server.js",
+    "daemon": "./bin/noir-server start",
+    "stop": "./bin/noir-server stop",
+    "restart": "./bin/noir-server restart",
+    "status": "./bin/noir-server status",
+    "logs": "./bin/noir-server logs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",

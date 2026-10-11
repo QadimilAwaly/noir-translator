@@ -42,6 +42,20 @@ function loadEnvFile(filepath: string): void {
 loadEnvFile('.env.local');
 loadEnvFile('.env');
 
+// Process crash guards: prevent server termination on client connection drop / EPIPE / ECONNRESET (Audit-Network)
+process.on('uncaughtException', (err: Error) => {
+  const msg = err?.message || String(err);
+  if (msg.includes('EPIPE') || msg.includes('ECONNRESET') || msg.includes('ECANCELED') || msg.includes('ECONNABORTED')) {
+    console.warn(`[Noir Server] Network socket closed by client (${msg}). Handled gracefully.`);
+    return;
+  }
+  console.error('[Noir Server] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('[Noir Server] Unhandled Promise Rejection:', reason);
+});
+
 const currentFilename = typeof import.meta !== 'undefined' && import.meta?.url ? fileURLToPath(import.meta.url) : '';
 const currentDirname = currentFilename ? path.dirname(currentFilename) : process.cwd();
 
@@ -2591,10 +2605,23 @@ Kembalikan respon DALAM FORMAT JSON SAJA dengan skema:
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(`[Noir Translator Server] Listening on http://${HOST}:${PORT}`);
     if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
       console.log(`[Noir Translator Server] Network address: http://${HOST}:${PORT}`);
+    }
+  });
+
+  // Tailscale / Mobile Network Hardening (Audit-Network)
+  // Ensure keep-alive connections don't drop prematurely over Tailscale VPN
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[Noir Translator Server] Port ${PORT} already in use.`);
+    } else {
+      console.error('[Noir Translator Server] Server error:', err);
     }
   });
 }

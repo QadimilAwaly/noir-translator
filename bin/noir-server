@@ -1,0 +1,239 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# ==============================================================================
+# Noir Translator CLI Controller for Termux / Linux
+# Commands: start, stop, restart, status, logs
+# ==============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PID_FILE="$DIR/.noir-daemon.pid"
+CHILD_PID_FILE="$DIR/.noir-server.pid"
+LOG_FILE="$DIR/noir-server.log"
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PREFIX/bin:$PATH"
+
+get_daemon_pid() {
+  if [ -f "$PID_FILE" ]; then
+    cat "$PID_FILE" 2>/dev/null || true
+  else
+    pgrep -f "bash.*scripts/run.sh" 2>/dev/null | head -n 1 || true
+  fi
+}
+
+get_server_pid() {
+  if [ -f "$CHILD_PID_FILE" ]; then
+    cat "$CHILD_PID_FILE" 2>/dev/null || true
+  else
+    pgrep -f "node.*dist/server.js" 2>/dev/null | head -n 1 || true
+  fi
+}
+
+is_running() {
+  local spid
+  spid=$(get_server_pid)
+  if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+cmd_start() {
+  local foreground=0
+  for arg in "$@"; do
+    if [ "$arg" = "-f" ] || [ "$arg" = "--foreground" ]; then
+      foreground=1
+    fi
+  done
+
+  if is_running; then
+    local spid
+    spid=$(get_server_pid)
+    echo "⚠️  Noir Translator sudah berjalan (PID: $spid)."
+    echo "💡 Gunakan './bin/noir-server status' atau './bin/noir-server restart'."
+    return 0
+  fi
+
+  cd "$DIR" || exit 1
+
+  # Pastikan build terbaru sudah siap
+  if [ ! -f "dist/server.js" ]; then
+    echo "📦 Membuat build dist/server.js terlebih dahulu..."
+    npm run build
+  fi
+
+  # Aktifkan Termux Wake Lock agar CPU tidak tidur saat layar mati
+  if command -v termux-wake-lock >/dev/null 2>&1; then
+    termux-wake-lock
+    echo "🔒 Termux Wake-Lock diaktifkan (mencegah Android Doze/Sleep)."
+  fi
+
+  if [ "$foreground" -eq 1 ]; then
+    echo "🚀 Menjalankan Noir Translator di foreground..."
+    exec "$DIR/scripts/run.sh"
+  else
+    echo "🚀 Menjalankan Noir Translator sebagai background daemon..."
+    nohup "$DIR/scripts/run.sh" > /dev/null 2>&1 </dev/null &
+    local dpid=$!
+    echo "$dpid" > "$PID_FILE"
+
+    # Tunggu hingga server node siap
+    local ready=0
+    for _ in {1..12}; do
+      if is_running; then
+        ready=1
+        break
+      fi
+      sleep 0.5
+    done
+
+    if [ "$ready" -eq 1 ]; then
+      local spid
+      spid=$(get_server_pid)
+      echo "✅ Noir Translator berhasil aktif (Daemon PID: $dpid, Server PID: $spid)."
+      echo "🌐 Akses lokal:      http://localhost:3131"
+      local ts_ip
+      ts_ip=$(ifconfig 2>/dev/null | grep -A 1 "tun" | grep "inet " | awk '{print $2}' || true)
+      if [ -n "$ts_ip" ]; then
+        echo "🌐 Akses Tailscale:  http://$ts_ip:3131"
+      fi
+      echo "📋 Cek log:          ./bin/noir-server logs"
+      echo "📊 Cek status:       ./bin/noir-server status"
+    else
+      echo "❌ Gagal mendeteksi server aktif dalam 6 detik. Cek log:"
+      tail -n 20 "$LOG_FILE" 2>/dev/null || true
+      return 1
+    fi
+  fi
+}
+
+cmd_stop() {
+  local dpid
+  local spid
+  dpid=$(get_daemon_pid)
+  spid=$(get_server_pid)
+
+  if [ -z "$dpid" ] && [ -z "$spid" ]; then
+    echo "ℹ️  Noir Translator tidak sedang berjalan."
+    rm -f "$PID_FILE" "$CHILD_PID_FILE" 2>/dev/null || true
+    return 0
+  fi
+
+  echo "🛑 Menghentikan Noir Translator..."
+  if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
+    kill -TERM "$dpid" 2>/dev/null || true
+  fi
+  if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+    kill -TERM "$spid" 2>/dev/null || true
+  fi
+
+  sleep 1
+
+  # Force kill jika masih hidup
+  if [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+    kill -KILL "$spid" 2>/dev/null || true
+  fi
+  if [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
+    kill -KILL "$dpid" 2>/dev/null || true
+  fi
+
+  rm -f "$PID_FILE" "$CHILD_PID_FILE" 2>/dev/null || true
+
+  if command -v termux-wake-unlock >/dev/null 2>&1; then
+    termux-wake-unlock 2>/dev/null || true
+  fi
+
+  echo "✅ Noir Translator berhasil dihentikan."
+}
+
+cmd_restart() {
+  echo "🔄 Merestart Noir Translator..."
+  cmd_stop
+  sleep 1
+  cmd_start "$@"
+}
+
+cmd_status() {
+  local spid
+  local dpid
+  spid=$(get_server_pid)
+  dpid=$(get_daemon_pid)
+
+  echo "=================================================="
+  echo "📊 Status Noir Translator"
+  echo "=================================================="
+
+  if is_running; then
+    echo "🟢 Status:          BERJALAN (RUNNING)"
+    echo "🆔 Server PID:      $spid"
+    [ -n "$dpid" ] && echo "🆔 Daemon PID:      $dpid"
+    echo "🔌 Port:            3131"
+
+    local ts_ip
+    ts_ip=$(ifconfig 2>/dev/null | grep -A 1 "tun" | grep "inet " | awk '{print $2}' || true)
+    if [ -n "$ts_ip" ]; then
+      echo "🔗 Tailscale IP:    $ts_ip:3131"
+    fi
+  else
+    echo "🔴 Status:          MATI (STOPPED)"
+  fi
+
+  if command -v termux-battery-status >/dev/null 2>&1; then
+    local bat_pct
+    bat_pct=$(termux-battery-status 2>/dev/null | grep '"percentage"' | tr -dc '0-9' || true)
+    local bat_stat
+    bat_stat=$(termux-battery-status 2>/dev/null | grep '"status"' | awk -F'"' '{print $4}' || true)
+    if [ -n "$bat_pct" ]; then
+      echo "🔋 Baterai:         $bat_pct% ($bat_stat)"
+    fi
+  fi
+  echo "=================================================="
+}
+
+cmd_logs() {
+  if [ ! -f "$LOG_FILE" ]; then
+    echo "ℹ️  Belum ada berkas log ($LOG_FILE)."
+    return 0
+  fi
+
+  local lines=30
+  if [ -n "$1" ]; then
+    lines="$1"
+  fi
+  echo "📋 Menampilkan $lines baris log terakhir (Tekan Ctrl+C untuk keluar):"
+  tail -n "$lines" -f "$LOG_FILE"
+}
+
+case "${1:-}" in
+  start)
+    shift
+    cmd_start "$@"
+    ;;
+  stop)
+    shift
+    cmd_stop "$@"
+    ;;
+  restart)
+    shift
+    cmd_restart "$@"
+    ;;
+  status)
+    shift
+    cmd_status "$@"
+    ;;
+  logs|log)
+    shift
+    cmd_logs "$@"
+    ;;
+  *)
+    echo "Perintah yang tersedia:"
+    echo "  ./bin/noir-server start       Mulai server di background dengan wake-lock & auto-restart"
+    echo "  ./bin/noir-server stop        Hentikan server dan lepaskan wake-lock"
+    echo "  ./bin/noir-server restart     Restart server"
+    echo "  ./bin/noir-server status      Cek status proses dan IP Tailscale"
+    echo "  ./bin/noir-server logs        Lihat log output secara real-time"
+    exit 1
+    ;;
+esac
