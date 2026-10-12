@@ -44,7 +44,7 @@ echo "[Noir Daemon] 🚀 Memulai Noir Translator Supervisor..."
 # 2. Resilient Supervisor Loop
 while true; do
   # Jalankan server
-  node dist/server.js >> "$LOG_FILE" 2>&1 &
+  node --dns-result-order=ipv4first --max-old-space-size=256 dist/server.js >> "$LOG_FILE" 2>&1 &
   SERVER_PID=$!
   echo "$SERVER_PID" > "$PID_FILE"
 

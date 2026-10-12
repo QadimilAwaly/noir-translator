@@ -4,6 +4,12 @@ try {
 } catch {
   // ignore
 }
+import dns from 'node:dns';
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // ignore
+}
 import express from 'express';
 import path from 'path';
 import fs from 'fs';

@@ -6,8 +6,14 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+TARGET="$0"
+while [ -h "$TARGET" ]; do
+  D="$(cd -P "$(dirname "$TARGET")" && pwd)"
+  TARGET="$(readlink "$TARGET")"
+  [[ $TARGET != /* ]] && TARGET="$D/$TARGET"
+done
+CLI_DIR="$(cd -P "$(dirname "$TARGET")" && pwd)"
+DIR="$(cd -P "$CLI_DIR/.." && pwd)"
 PID_FILE="$DIR/.noir-daemon.pid"
 CHILD_PID_FILE="$DIR/.noir-server.pid"
 LOG_FILE="$DIR/noir-server.log"
