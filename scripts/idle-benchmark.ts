@@ -14,11 +14,17 @@ interface ProcStats {
 }
 
 const PORT = 3999;
+import os from 'os';
+import path from 'path';
+const BENCH_DIR = path.join(os.tmpdir(), `bench-noir-${Date.now()}`);
+fs.mkdirSync(BENCH_DIR, { recursive: true });
 const TEST_ENV = {
   ...process.env,
   PORT: String(PORT),
   HOST: '127.0.0.1',
   NODE_ENV: 'production',
+  GLOBAL_STORAGE_PATH: BENCH_DIR,
+  CONFIG_PATH: path.join(BENCH_DIR, 'config.json'),
 };
 
 function readProcStats(pid: number): ProcStats {
@@ -239,6 +245,11 @@ async function run() {
   } finally {
     try {
       server.kill('SIGTERM');
+    } catch {
+      // ignore
+    }
+    try {
+      fs.rmSync(BENCH_DIR, { recursive: true, force: true });
     } catch {
       // ignore
     }

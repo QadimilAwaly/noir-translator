@@ -234,7 +234,10 @@ async function startServer() {
       lower === 'library index.json' ||
       lower === 'node modules' ||
       lower === 'dist' ||
-      lower === '.git'
+      lower === '.git' ||
+      lower.includes('idle benchmark') ||
+      lower.includes('bench-idle') ||
+      lower.startsWith('bench ')
     );
   }
 
@@ -1524,6 +1527,9 @@ function ensurePromptTemplateFile(): void {
         newNovels = current.novels;
       } else {
         newNovels = data.novels;
+        if (newNovels.length !== current.novels.length || data.isExplicitDelete) {
+          hasChanges = true;
+        }
       }
     }
     // Safe handling of novel references (Site D security invariant check)
