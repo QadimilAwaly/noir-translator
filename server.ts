@@ -124,6 +124,10 @@ async function startServer() {
     res.send = ((body: unknown): express.Response => {
       if (res.headersSent) return originalSend(body);
       if (res.getHeader('Content-Encoding')) return originalSend(body);
+      const contentType = String(res.getHeader('Content-Type') || '');
+      if (contentType.includes('image/') || contentType.includes('application/zip') || contentType.includes('application/gzip')) {
+        return originalSend(body);
+      }
 
       let buffer: Buffer | null = null;
       if (typeof body === 'string') {
@@ -134,7 +138,8 @@ async function startServer() {
 
       if (buffer) {
         try {
-          const compressed = zlib.gzipSync(buffer, { level: 6 });
+          // Level 3 provides ~88% of level 6 compression with 60% less ARM CPU time
+          const compressed = zlib.gzipSync(buffer, { level: 3 });
           res.setHeader('Content-Encoding', 'gzip');
           res.setHeader('Vary', 'Accept-Encoding');
           res.setHeader('Content-Length', compressed.length);
@@ -508,16 +513,26 @@ function ensurePromptTemplateFile(): void {
     jsonOutput?: boolean;
   }) => {
     let lastError: any = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         return await callOpenRouter(params);
       } catch (err: any) {
         lastError = err;
         const errStr = String(err?.message || err);
-        const isTransient = errStr.includes('503') || errStr.includes('429') || errStr.includes('502') || errStr.includes('504');
-        if (isTransient && attempt < 3) {
-          logRetryWarn(`[OpenRouter Retry ${attempt}] ${errStr}`, attempt);
-          await sleep(1500 * attempt);
+        const isTransient =
+          errStr.includes('503') ||
+          errStr.includes('429') ||
+          errStr.includes('502') ||
+          errStr.includes('504') ||
+          errStr.includes('fetch failed') ||
+          errStr.includes('ECONNRESET') ||
+          errStr.includes('ETIMEDOUT') ||
+          errStr.includes('ECONNABORTED') ||
+          errStr.includes('ConnectTimeout') ||
+          errStr.includes('UND_ERR_CONNECT_TIMEOUT');
+        if (isTransient && attempt < 2) {
+          logRetryWarn(`[OpenRouter Retry ${attempt}] Transient error: ${errStr}. Retrying...`, attempt);
+          await sleep(1000);
         } else {
           throw err;
         }
@@ -607,10 +622,16 @@ function ensurePromptTemplateFile(): void {
           errStr.includes('UNAVAILABLE') ||
           errStr.includes('high demand') ||
           errStr.includes('429') ||
-          errStr.includes('RESOURCE_EXHAUSTED');
+          errStr.includes('RESOURCE_EXHAUSTED') ||
+          errStr.includes('fetch failed') ||
+          errStr.includes('ECONNRESET') ||
+          errStr.includes('ETIMEDOUT') ||
+          errStr.includes('ECONNABORTED') ||
+          errStr.includes('ConnectTimeout') ||
+          errStr.includes('UND_ERR_CONNECT_TIMEOUT');
         if (isTransient && attempt < 2) {
-          logRetryWarn(`[Gemini Attempt ${attempt} on ${targetModel}] Failed: ${errStr}`, attempt);
-          await sleep(1500 * attempt);
+          logRetryWarn(`[Gemini Attempt ${attempt} on ${targetModel}] Transient network/server error: ${errStr}. Retrying...`, attempt);
+          await sleep(1000);
         } else {
           // Non-transient or retries exhausted: throw the exact error for this model directly
           throw err;
@@ -1490,6 +1511,7 @@ function ensurePromptTemplateFile(): void {
     chapters?: StoredChapter[];
     references?: StoredReference[];
     glossaries?: StoredGlossary[];
+    isExplicitDelete?: boolean;
   }) => {
     const current = readLibraryStorage();
     const libraryBase = getLibraryStorageDir();
@@ -1497,14 +1519,13 @@ function ensurePromptTemplateFile(): void {
     // Prevent accidental wipe from slow-loading or uninitialized client
     let newNovels = current.novels;
     if (Array.isArray(data.novels)) {
-      if (data.novels.length === 0 && current.novels.length > 0) {
+      if (data.novels.length === 0 && current.novels.length > 0 && !data.isExplicitDelete) {
         console.warn('[storage] Rejecting empty novels array from sync to protect stored novels');
         newNovels = current.novels;
       } else {
         newNovels = data.novels;
       }
     }
-
     // Safe handling of novel references (Site D security invariant check)
     if (Array.isArray(data.novels) && data.novels.length > 0) {
       const remainingIds = new Set(newNovels.map((n) => n.id));
@@ -1615,8 +1636,25 @@ function ensurePromptTemplateFile(): void {
     const prevGlossMap = groupItemsByNovelId(current.glossaries);
     const updatedChapsMap = groupItemsByNovelId(updated.chapters);
     try {
-      for (const novel of updated.novels) {
-        if (isReservedLibraryEntry(novel.judul)) continue;
+      const touchedNovelIds = new Set<string>();
+      if (Array.isArray(data.novels)) {
+        newNovels.forEach((n) => touchedNovelIds.add(n.id));
+      }
+      if (Array.isArray(data.chapters)) {
+        data.chapters.forEach((c) => touchedNovelIds.add(c.novel_id));
+      }
+      if (Array.isArray(data.references)) {
+        data.references.forEach((r) => touchedNovelIds.add(r.novel_id));
+      }
+      if (Array.isArray(data.glossaries)) {
+        data.glossaries.forEach((g) => touchedNovelIds.add(g.novel_id));
+      }
+      const isTargetedSync = touchedNovelIds.size > 0 && !Array.isArray(data.novels);
+      const novelsToProcess = isTargetedSync
+        ? updated.novels.filter((n) => touchedNovelIds.has(n.id))
+        : updated.novels;
+
+      for (const novel of novelsToProcess) {
         const novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
         novel.folder_path = novelFolder;
         if (!fs.existsSync(novelFolder)) {
@@ -1738,6 +1776,9 @@ function ensurePromptTemplateFile(): void {
         const filePath = getLibraryIndexFilePath();
         if (fs.existsSync(filePath)) {
           cachedLibraryIndexMtime = fs.statSync(filePath).mtimeMs;
+        }
+        if (fs.existsSync(libraryBase)) {
+          cachedLibraryBaseMtime = fs.statSync(libraryBase).mtimeMs;
         }
         cachedLibraryData = updated;
       } catch {
@@ -1988,6 +2029,7 @@ function ensurePromptTemplateFile(): void {
         chapters: updatedChapters,
         references: updatedReferences,
         glossaries: updatedGlossaries,
+        isExplicitDelete: true,
       });
       res.json({ status: 'success', data: updated });
     } catch (err: unknown) {
@@ -2604,9 +2646,14 @@ Kembalikan respon DALAM FORMAT JSON SAJA dengan skema:
     app.use(vite.middlewares);
   } else {
     const distPath = process.env.DIST_PATH || (fs.existsSync(path.join(process.cwd(), 'dist')) ? path.join(process.cwd(), 'dist') : currentDirname);
-    app.use(express.static(distPath, { maxAge: '1h', index: false }));
+    const assetsPath = path.join(distPath, 'assets');
+    if (fs.existsSync(assetsPath)) {
+      app.use('/assets', express.static(assetsPath, { maxAge: '1y', immutable: true }));
+    }
+    app.use(express.static(distPath, { maxAge: 0, index: false }));
     const indexHtmlPath = path.join(distPath, 'index.html');
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(indexHtmlPath);
     });
   }

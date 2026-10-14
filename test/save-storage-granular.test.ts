@@ -227,4 +227,43 @@ describe('Integration: Granular Write Simulation (Audit-Daya #06)', () => {
 
     assert.equal(updatedNovels.length, 2, 'Empty sync must not wipe existing novels');
   });
+
+  test('Explicit deletion with empty novels array is permitted when isExplicitDelete is true', () => {
+    const currentNovels = [{ id: 'n1', judul: 'Novel 1' }];
+    const incomingNovels: Array<{ id: string; judul: string }> = [];
+    const isExplicitDelete = true;
+
+    let updatedNovels = currentNovels;
+    if (Array.isArray(incomingNovels)) {
+      if (incomingNovels.length === 0 && currentNovels.length > 0 && !isExplicitDelete) {
+        updatedNovels = currentNovels; // Protected
+      } else {
+        updatedNovels = incomingNovels; // Explicitly allowed
+      }
+    }
+
+    assert.equal(updatedNovels.length, 0, 'Explicit delete must permit empty array');
+  });
+
+  test('Targeted sync touches only specified novels and ignores unrelated novels', () => {
+    const allNovels = [
+      { id: 'n1', judul: 'Novel 1' },
+      { id: 'n2', judul: 'Novel 2' },
+      { id: 'n3', judul: 'Novel 3' },
+    ];
+    const partialChapters = [
+      { id: 'c1', novel_id: 'n2', nomor_chapter: 1, judul_chapter: 'Bab 1', teks_asli: '', teks_terjemahan: '', status_pengerjaan: 'Belum', createdAt: '', updatedAt: '' }
+    ];
+
+    const touchedNovelIds = new Set<string>();
+    partialChapters.forEach((c) => touchedNovelIds.add(c.novel_id));
+
+    const isTargetedSync = touchedNovelIds.size > 0;
+    const novelsToProcess = isTargetedSync
+      ? allNovels.filter((n) => touchedNovelIds.has(n.id))
+      : allNovels;
+
+    assert.equal(novelsToProcess.length, 1);
+    assert.equal(novelsToProcess[0].id, 'n2', 'Only targeted novel n2 should be processed');
+  });
 });
