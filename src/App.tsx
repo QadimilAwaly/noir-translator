@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Novel, Chapter, ReferenceItem, GlossaryItem, ChapterStatus, LanguageCode, AIConfig, ServerConfig, GenderTag } from './types';
+import { Novel, Chapter, ReferenceItem, GlossaryItem, ChapterStatus, LanguageCode, AIConfig, ServerConfig, GenderTag, GlossaryCategory } from './types';
 import {
   getStoredChapters,
   saveStoredChapters,
@@ -24,6 +24,7 @@ import { NewChapterModal } from './components/NewChapterModal';
 import { NewGlossaryModal } from './components/NewGlossaryModal';
 import { ExportModal } from './components/ExportModal';
 import { ModelSettingsModal } from './components/ModelSettingsModal';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 
 interface ToastAction {
   label: string;
@@ -100,8 +101,10 @@ export default function App() {
   const [isNewNovelModalOpen, setIsNewNovelModalOpen] = useState(false);
   const [isNewChapterModalOpen, setIsNewChapterModalOpen] = useState(false);
   const [isNewGlossaryModalOpen, setIsNewGlossaryModalOpen] = useState(false);
+  const [editingGlossary, setEditingGlossary] = useState<GlossaryItem | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isModelSettingsModalOpen, setIsModelSettingsModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
 
   // Panel visibility states (responsive defaults)
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(() => {
@@ -162,9 +165,9 @@ export default function App() {
     showToast(`Pengaturan tersimpan ke config.json (${newConfig.provider.toUpperCase()}: ${newConfig.model}).`);
   };
 
-  // Initial Load of Novels on Mount
+  // Initial Load of Novels on Mount (fast cached load; manual reload button in Header provides force=true when needed)
   useEffect(() => {
-    reloadLibraryFromDisk(undefined, { force: true }).then((serverData) => {
+    reloadLibraryFromDisk(undefined, { force: false }).then((serverData) => {
       if (serverData && serverData.novels.length > 0) {
         const targetId = activeNovelId || serverData.novels[0].id;
         chapterEditor.reloadFromServer(targetId, serverData);
@@ -313,6 +316,24 @@ export default function App() {
     showToast(`Istilah "${newItem.istilah_asli}" ditambahkan ke glosarium.`);
   };
 
+  // Handler: Update Glossary Item
+  const handleUpdateGlossaryItem = (
+    id: string,
+    data: {
+      istilah_asli: string;
+      istilah_terjemahan: string;
+      kategori: GlossaryCategory;
+      gender?: GenderTag;
+      konteks?: string;
+    }
+  ) => {
+    if (!activeNovelId) return;
+    const updated = chapterEditor.updateGlossaryItem(id, data, activeNovelId);
+    if (updated) {
+      showToast(`Istilah "${updated.istilah_asli}" berhasil diperbarui.`);
+    }
+  };
+
   // Handler: Delete Glossary Item
   const handleDeleteGlossaryItem = (id: string) => {
     if (!activeNovelId) return;
@@ -429,7 +450,8 @@ export default function App() {
 
       if (result.terms && result.terms.length > 0) {
         let addedCount = 0;
-        const newGlossaryItems: GlossaryItem[] = [...glossaries];
+        const currentGloss = activeNovelId ? getStoredGlossaries(activeNovelId) : glossaries;
+        const newGlossaryItems: GlossaryItem[] = [...currentGloss];
 
         result.terms.forEach((term) => {
           const validation = validateGlossaryCandidate(term);
@@ -493,6 +515,171 @@ export default function App() {
     showToast(`Bahasa diperbarui: ${source} ➔ ${target}`);
   };
 
+  // Power & Latency Optimized: Stable Ref to avoid re-binding window listener on every keystroke
+  const shortcutsStateRef = useRef({
+    isShortcutsModalOpen,
+    isAnyModalOpen: false,
+    activeNovel,
+    activeChapter,
+    activeChapterId,
+    chapters,
+    isTranslating,
+    isExtracting,
+    handleTranslateChapter,
+    handleExtractGlossary,
+    saveChapterToDiskServer,
+    handleSelectChapter,
+    showToast,
+    setIsShortcutsModalOpen,
+    setIsNewChapterModalOpen,
+  });
+
+  shortcutsStateRef.current = {
+    isShortcutsModalOpen,
+    isAnyModalOpen:
+      isNewNovelModalOpen ||
+      isNewChapterModalOpen ||
+      isNewGlossaryModalOpen ||
+      editingGlossary !== null ||
+      isExportModalOpen ||
+      isModelSettingsModalOpen,
+    activeNovel,
+    activeChapter,
+    activeChapterId,
+    chapters,
+    isTranslating,
+    isExtracting,
+    handleTranslateChapter,
+    handleExtractGlossary,
+    saveChapterToDiskServer,
+    handleSelectChapter,
+    showToast,
+    setIsShortcutsModalOpen,
+    setIsNewChapterModalOpen,
+  };
+
+  // Global Keyboard Shortcuts for High-Speed Translation Workflow (Single listener instance)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const state = shortcutsStateRef.current;
+
+      // 1. Toggle or Close Shortcuts Cheat Sheet Modal
+      if (state.isShortcutsModalOpen) {
+        if (e.key === 'Escape' || e.key === '?' || ((e.ctrlKey || e.metaKey) && e.key === '/')) {
+          e.preventDefault();
+          state.setIsShortcutsModalOpen(false);
+        }
+        return;
+      }
+
+      const activeTag = (e.target as HTMLElement)?.tagName;
+      const isTypingInField = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+
+      // 2. Open Shortcuts Modal (? when not typing in text field, or Ctrl+/)
+      if ((e.key === '?' && !isTypingInField) || ((e.ctrlKey || e.metaKey) && e.key === '/')) {
+        e.preventDefault();
+        state.setIsShortcutsModalOpen(true);
+        return;
+      }
+
+      // If other modals are open, do not execute background shortcuts
+      if (state.isAnyModalOpen) return;
+
+      // 3. Translate Chapter: Ctrl+Enter / Cmd+Enter OR Alt+T
+      if (((e.ctrlKey || e.metaKey) && e.key === 'Enter') || (e.altKey && (e.key === 't' || e.key === 'T'))) {
+        e.preventDefault();
+        if (state.isTranslating) return;
+        if (!state.activeNovel) {
+          state.showToast('Pilih novel terlebih dahulu untuk menerjemahkan.');
+          return;
+        }
+        if (!state.activeChapter) {
+          state.showToast('Pilih chapter yang ingin diterjemahkan.');
+          return;
+        }
+        if (!state.activeChapter.teks_asli.trim()) {
+          state.showToast('Teks bab asli masih kosong.');
+          return;
+        }
+        state.handleTranslateChapter();
+        return;
+      }
+
+      // 4. Extract Glossary: Alt+G OR Ctrl+Shift+G
+      if (
+        (e.altKey && (e.key === 'g' || e.key === 'G')) ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'g' || e.key === 'G'))
+      ) {
+        e.preventDefault();
+        if (state.isExtracting) return;
+        if (!state.activeChapter) {
+          state.showToast('Pilih chapter terlebih dahulu.');
+          return;
+        }
+        if (!state.activeChapter.teks_terjemahan || !state.activeChapter.teks_terjemahan.trim()) {
+          state.showToast('Teks terjemahan masih kosong. Terjemahkan terlebih dahulu sebelum ekstrak glosarium.');
+          return;
+        }
+        state.handleExtractGlossary();
+        return;
+      }
+
+      // 5. Add Chapter: Alt+N
+      if (e.altKey && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        if (!state.activeNovel) {
+          state.showToast('Pilih novel terlebih dahulu sebelum menambah bab.');
+          return;
+        }
+        state.setIsNewChapterModalOpen(true);
+        return;
+      }
+
+      // 6. Save Chapter: Ctrl+S / Cmd+S
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (state.activeChapter && state.activeNovel) {
+          state.saveChapterToDiskServer(state.activeChapter);
+          state.showToast(`Chapter ${state.activeChapter.nomor_chapter} berhasil disimpan ke disk.`);
+        }
+        return;
+      }
+
+      // 7. Next Chapter: Alt+ArrowRight or Alt+] (prevent Arrow conflict while typing in editor)
+      if (e.altKey && (e.key === 'ArrowRight' || e.key === ']')) {
+        if (isTypingInField && e.key === 'ArrowRight') return;
+        e.preventDefault();
+        if (state.chapters.length > 0 && state.activeChapterId) {
+          const idx = state.chapters.findIndex((c) => c.id === state.activeChapterId);
+          if (idx >= 0 && idx < state.chapters.length - 1) {
+            const nextChap = state.chapters[idx + 1];
+            state.handleSelectChapter(nextChap.id);
+            state.showToast(`Beralih ke Chapter ${nextChap.nomor_chapter}: ${nextChap.judul_chapter}`);
+          }
+        }
+        return;
+      }
+
+      // 8. Previous Chapter: Alt+ArrowLeft or Alt+[ (prevent Arrow conflict while typing in editor)
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === '[')) {
+        if (isTypingInField && e.key === 'ArrowLeft') return;
+        e.preventDefault();
+        if (state.chapters.length > 0 && state.activeChapterId) {
+          const idx = state.chapters.findIndex((c) => c.id === state.activeChapterId);
+          if (idx > 0) {
+            const prevChap = state.chapters[idx - 1];
+            state.handleSelectChapter(prevChap.id);
+            state.showToast(`Beralih ke Chapter ${prevChap.nomor_chapter}: ${prevChap.judul_chapter}`);
+          }
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const completedChaptersCount = chapters.filter((c) => c.status_pengerjaan === 'Selesai').length;
 
   return (
@@ -532,6 +719,7 @@ export default function App() {
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenModelSettingsModal={() => setIsModelSettingsModalOpen(true)}
         onUpdateNovelLanguages={handleUpdateNovelLanguages}
+        onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         onReloadFromDisk={async () => {
           const serverData = await reloadLibraryFromDisk(undefined, { force: true });
           if (serverData && activeNovelId) {
@@ -615,10 +803,14 @@ export default function App() {
               onAddReferenceItem={handleAddReferenceItem}
               onDeleteReferenceItem={handleDeleteReferenceItem}
               onAddGlossaryItem={handleAddGlossaryItem}
+              onEditGlossaryItem={(item) => setEditingGlossary(item)}
               onDeleteGlossaryItem={handleDeleteGlossaryItem}
               onUpdateGlossaryGender={handleUpdateGlossaryGender}
               onCleanNoisyGlossary={handleCleanNoisyGlossary}
-              onOpenNewGlossaryModal={() => setIsNewGlossaryModalOpen(true)}
+              onOpenNewGlossaryModal={() => {
+                setEditingGlossary(null);
+                setIsNewGlossaryModalOpen(true);
+              }}
               onClose={() => setIsRightPanelOpen(false)}
             />
           </>
@@ -640,10 +832,15 @@ export default function App() {
       />
 
       <NewGlossaryModal
-        isOpen={isNewGlossaryModalOpen}
-        onClose={() => setIsNewGlossaryModalOpen(false)}
+        isOpen={isNewGlossaryModalOpen || editingGlossary !== null}
+        onClose={() => {
+          setIsNewGlossaryModalOpen(false);
+          setEditingGlossary(null);
+        }}
         activeChapterNum={activeChapter?.nomor_chapter}
+        initialData={editingGlossary}
         onAddGlossary={handleAddGlossaryItem}
+        onUpdateGlossary={handleUpdateGlossaryItem}
       />
 
       <ExportModal
@@ -662,6 +859,11 @@ export default function App() {
         defaultGeminiModel={serverConfig?.default_model}
         defaultOpenrouterModel={serverConfig?.default_openrouter_model}
         onSaveConfig={handleSaveAiConfig}
+      />
+
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
       />
     </div>
   );

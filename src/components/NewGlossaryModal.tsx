@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { X, Tag, User } from 'lucide-react';
-import { GlossaryCategory, GenderTag } from '../types';
+import React, { useState, useEffect } from 'react';
+import { X, Tag, User, Edit2 } from 'lucide-react';
+import { GlossaryCategory, GenderTag, GlossaryItem } from '../types';
 
 interface NewGlossaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   activeChapterNum?: number;
-  onAddGlossary: (data: {
+  initialData?: GlossaryItem | null;
+  onAddGlossary?: (data: {
     istilah_asli: string;
     istilah_terjemahan: string;
     kategori: GlossaryCategory;
@@ -14,13 +15,25 @@ interface NewGlossaryModalProps {
     chapter_ditemukan?: string;
     konteks?: string;
   }) => void;
+  onUpdateGlossary?: (
+    id: string,
+    data: {
+      istilah_asli: string;
+      istilah_terjemahan: string;
+      kategori: GlossaryCategory;
+      gender?: GenderTag;
+      konteks?: string;
+    }
+  ) => void;
 }
 
 export const NewGlossaryModal: React.FC<NewGlossaryModalProps> = ({
   isOpen,
   onClose,
   activeChapterNum,
+  initialData,
   onAddGlossary,
+  onUpdateGlossary,
 }) => {
   const [istilahAsli, setIstilahAsli] = useState('');
   const [istilahTerjemahan, setIstilahTerjemahan] = useState('');
@@ -28,20 +41,50 @@ export const NewGlossaryModal: React.FC<NewGlossaryModalProps> = ({
   const [gender, setGender] = useState<GenderTag>('Male');
   const [konteks, setKonteks] = useState('');
 
+  const isEditing = Boolean(initialData);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialData) {
+        setIstilahAsli(initialData.istilah_asli || '');
+        setIstilahTerjemahan(initialData.istilah_terjemahan || '');
+        setKategori(initialData.kategori || 'Nama');
+        setGender(initialData.gender || 'Male');
+        setKonteks(initialData.konteks || '');
+      } else {
+        setIstilahAsli('');
+        setIstilahTerjemahan('');
+        setKategori('Nama');
+        setGender('Male');
+        setKonteks('');
+      }
+    }
+  }, [isOpen, initialData]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!istilahAsli.trim() || !istilahTerjemahan.trim()) return;
 
-    onAddGlossary({
-      istilah_asli: istilahAsli.trim(),
-      istilah_terjemahan: istilahTerjemahan.trim(),
-      kategori,
-      gender: kategori === 'Nama' ? gender : undefined,
-      chapter_ditemukan: activeChapterNum ? `Chapter ${activeChapterNum}` : 'Manual',
-      konteks: konteks.trim(),
-    });
+    if (isEditing && initialData && onUpdateGlossary) {
+      onUpdateGlossary(initialData.id, {
+        istilah_asli: istilahAsli.trim(),
+        istilah_terjemahan: istilahTerjemahan.trim(),
+        kategori,
+        gender: kategori === 'Nama' ? gender : undefined,
+        konteks: konteks.trim(),
+      });
+    } else if (onAddGlossary) {
+      onAddGlossary({
+        istilah_asli: istilahAsli.trim(),
+        istilah_terjemahan: istilahTerjemahan.trim(),
+        kategori,
+        gender: kategori === 'Nama' ? gender : undefined,
+        chapter_ditemukan: activeChapterNum ? `Chapter ${activeChapterNum}` : 'Manual',
+        konteks: konteks.trim(),
+      });
+    }
 
     setIstilahAsli('');
     setIstilahTerjemahan('');
@@ -55,8 +98,12 @@ export const NewGlossaryModal: React.FC<NewGlossaryModalProps> = ({
       <div className="bg-[#16181D] border border-gray-800 rounded-lg w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-150">
         <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-[#0F1113]">
           <div className="flex items-center gap-2 text-gray-200 font-bold text-sm">
-            <Tag className="w-4 h-4 text-indigo-400" />
-            <span>Tambah Istilah Glosarium</span>
+            {isEditing ? (
+              <Edit2 className="w-4 h-4 text-indigo-400" />
+            ) : (
+              <Tag className="w-4 h-4 text-indigo-400" />
+            )}
+            <span>{isEditing ? 'Edit Istilah Glosarium' : 'Tambah Istilah Glosarium'}</span>
           </div>
           <button
             onClick={onClose}
@@ -180,7 +227,7 @@ export const NewGlossaryModal: React.FC<NewGlossaryModalProps> = ({
               type="submit"
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded transition-colors"
             >
-              Simpan Istilah
+              {isEditing ? 'Simpan Perubahan' : 'Simpan Istilah'}
             </button>
           </div>
         </form>

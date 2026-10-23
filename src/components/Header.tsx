@@ -1,5 +1,5 @@
 import React from 'react';
-import { FolderDown, Plus, Sparkles, Languages, CheckCircle2, Sliders, Cpu, ArrowRightLeft, FolderOpen, RefreshCw, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight } from 'lucide-react';
+import { FolderDown, Plus, Sparkles, Languages, CheckCircle2, Sliders, Cpu, ArrowRightLeft, FolderOpen, RefreshCw, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Keyboard } from 'lucide-react';
 import { Novel, AIConfig, LanguageCode, SUPPORTED_LANGUAGES } from '../types';
 
 interface HeaderProps {
@@ -14,6 +14,7 @@ interface HeaderProps {
   onUpdateNovelLanguages?: (source: LanguageCode, target: LanguageCode) => void;
   onSelectFolderForActiveNovel?: () => void;
   onReloadFromDisk?: () => void;
+  onOpenShortcutsModal?: () => void;
   isLeftSidebarOpen?: boolean;
   isRightPanelOpen?: boolean;
   onToggleLeftSidebar?: () => void;
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onUpdateNovelLanguages,
   onSelectFolderForActiveNovel,
   onReloadFromDisk,
+  onOpenShortcutsModal,
   isLeftSidebarOpen = true,
   isRightPanelOpen = true,
   onToggleLeftSidebar,
@@ -185,6 +187,17 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden sm:inline">Reload dari Disk</span>
+          </button>
+        )}
+
+        {/* Keyboard Shortcuts Button */}
+        {onOpenShortcutsModal && (
+          <button
+            onClick={onOpenShortcutsModal}
+            className="p-1.5 bg-[#0F1113] hover:bg-gray-800 border border-gray-800 rounded text-gray-400 hover:text-indigo-400 transition-colors"
+            title="Pintasan Keyboard (?)"
+          >
+            <Keyboard className="w-4 h-4" />
           </button>
         )}
 

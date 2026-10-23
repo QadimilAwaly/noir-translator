@@ -340,4 +340,49 @@ describe('Integration: Window Focus Race Condition & Cooldown Mitigation', () =>
     assert.equal(reload(5000, { force: true }), true);
     assert.equal(fetchExecuted, true);
   });
+
+  test('updateStoredGlossary updates translation, term, category and context without losing ID or novelId', () => {
+    const { updateStoredGlossary, getStoredGlossaries, setInMemoryLibrary } = require('../src/services/storage');
+    const novelId = 'test-novel-glos-edit';
+    setInMemoryLibrary({
+      glossaries: [
+        {
+          id: 'glos-item-1',
+          novel_id: novelId,
+          istilah_asli: 'リーフ',
+          istilah_terjemahan: 'Leaf',
+          kategori: 'Nama',
+          gender: 'Male',
+          konteks: 'Protagonis utama',
+        },
+        {
+          id: 'glos-item-2',
+          novel_id: novelId,
+          istilah_asli: '世界樹',
+          istilah_terjemahan: 'World Tree',
+          kategori: 'Tempat',
+          konteks: 'Pohon keramat',
+        },
+      ],
+    });
+
+    // Update glos-item-1 translation and context
+    const updated = updateStoredGlossary('glos-item-1', {
+      istilah_terjemahan: 'Leaf Ash',
+      konteks: 'Protagonis utama mantan manusia',
+      gender: 'Male',
+    }, novelId);
+
+    const target = updated.find((g: any) => g.id === 'glos-item-1');
+    assert(target, 'Target item must exist');
+    assert.equal(target.istilah_asli, 'リーフ');
+    assert.equal(target.istilah_terjemahan, 'Leaf Ash');
+    assert.equal(target.konteks, 'Protagonis utama mantan manusia');
+    assert.equal(target.novel_id, novelId);
+
+    // Other glossary items must remain intact
+    const item2 = updated.find((g: any) => g.id === 'glos-item-2');
+    assert(item2, 'Other items must remain intact');
+    assert.equal(item2.istilah_terjemahan, 'World Tree');
+  });
 });

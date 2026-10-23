@@ -243,6 +243,8 @@ export interface LibraryStorageData {
 }
 
 let syncTimeout: number | undefined;
+let pendingSyncPayload: Partial<LibraryStorageData> | null = null;
+let isFullSyncPending = false;
 let isServerStorageLoaded = false;
 let inMemoryLibrary: LibraryStorageData = {
   novels: [],
@@ -337,18 +339,30 @@ export function syncServerStorage(customData?: Partial<LibraryStorageData>, part
     console.warn('[storage] Skipping syncServerStorage: storage not yet loaded from server');
     return;
   }
+
+  if (partialOnly && customData) {
+    if (!pendingSyncPayload) {
+      pendingSyncPayload = {};
+    }
+    if (customData.novels) pendingSyncPayload.novels = customData.novels;
+    if (customData.chapters) pendingSyncPayload.chapters = customData.chapters;
+    if (customData.references) pendingSyncPayload.references = customData.references;
+    if (customData.glossaries) pendingSyncPayload.glossaries = customData.glossaries;
+  } else {
+    isFullSyncPending = true;
+  }
+
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {
       let payload: Record<string, unknown>;
 
-      if (partialOnly) {
-        payload = {};
-        if (customData?.novels) payload.novels = customData.novels;
-        if (customData?.chapters) payload.chapters = customData.chapters;
-        if (customData?.references) payload.references = customData.references;
-        if (customData?.glossaries) payload.glossaries = customData.glossaries;
+      if (!isFullSyncPending && pendingSyncPayload) {
+        payload = { ...pendingSyncPayload };
+        pendingSyncPayload = null;
       } else {
+        isFullSyncPending = false;
+        pendingSyncPayload = null;
         const novels = customData?.novels || getStoredNovels();
         const chapters = customData?.chapters || getStoredChapters();
         const references = customData?.references || getAllStoredReferences();
@@ -501,6 +515,35 @@ export function saveStoredGlossaries(gloss: GlossaryItem[], novelId?: string) {
     inMemoryLibrary.glossaries = cleanGloss;
   }
   syncServerStorage({ glossaries: inMemoryLibrary.glossaries }, true);
+}
+
+export function updateStoredGlossary(
+  id: string,
+  patch: Partial<Omit<GlossaryItem, 'id' | 'novel_id'>>,
+  novelId?: string
+): GlossaryItem[] {
+  let targetNovelId = novelId;
+  inMemoryLibrary.glossaries = inMemoryLibrary.glossaries.map((g) => {
+    if (g.id === id) {
+      if (!targetNovelId) targetNovelId = g.novel_id;
+      return {
+        ...g,
+        ...patch,
+        id: g.id,
+        novel_id: g.novel_id,
+      };
+    }
+    return g;
+  });
+
+  const updatedGlossaries = targetNovelId
+    ? inMemoryLibrary.glossaries.filter((g) => g.novel_id === targetNovelId)
+    : inMemoryLibrary.glossaries;
+
+  saveStoredGlossaries(updatedGlossaries, targetNovelId);
+  return targetNovelId
+    ? inMemoryLibrary.glossaries.filter((g) => g.novel_id === targetNovelId)
+    : inMemoryLibrary.glossaries;
 }
 export function deleteStoredGlossary(glossaryId: string, novelId?: string): GlossaryItem[] {
   inMemoryLibrary.glossaries = inMemoryLibrary.glossaries.filter((g) => g.id !== glossaryId);

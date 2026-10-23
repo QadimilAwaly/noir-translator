@@ -76,6 +76,28 @@ function safeTokenCompare(a: string | undefined, b: string): boolean {
   }
 }
 
+async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+  const tmpPath = `${filePath}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fs.promises.writeFile(tmpPath, content, 'utf-8');
+    await fs.promises.rename(tmpPath, filePath);
+  } catch (err) {
+    try { if (fs.existsSync(tmpPath)) await fs.promises.unlink(tmpPath); } catch {}
+    throw err;
+  }
+}
+
+function atomicWriteFileSync(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    fs.writeFileSync(tmpPath, content, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3131;
@@ -153,9 +175,11 @@ async function startServer() {
     next();
   });
 
-  // Bulk endpoints receive higher 10mb payload limit for full novel export & folder imports (Audit-Daya #05)
+  // Bulk endpoints receive higher payload limits for full novel export, folder imports, and sync
   app.use('/api/export-novel', express.json({ limit: '10mb' }));
   app.use('/api/import-novel-folder', express.json({ limit: '10mb' }));
+  app.use('/api/save-chapter', express.json({ limit: '10mb' }));
+  app.use('/api/storage/sync', express.json({ limit: '50mb' }));
   // Regular endpoints receive tighter 2mb payload limit
   app.use('/api', express.json({ limit: '2mb' }));
 
@@ -1325,7 +1349,7 @@ function ensurePromptTemplateFile(): void {
           novels: currentData.novels,
           last_updated: currentData.last_updated,
         };
-        fs.writeFileSync(filePath, JSON.stringify(manifest, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(manifest, null, 2));
       }
     } catch (scanErr) {
       console.warn('Scan novel folders error:', scanErr);
@@ -1384,15 +1408,17 @@ function ensurePromptTemplateFile(): void {
       let lastUpdated = new Date().toISOString();
       try {
         if (fs.existsSync(filePath)) {
-          const raw = fs.readFileSync(filePath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.novels)) {
-            indexedNovels = parsed.novels;
-            lastUpdated = parsed.last_updated || lastUpdated;
+          const raw = fs.readFileSync(filePath, 'utf-8').trim();
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.novels)) {
+              indexedNovels = parsed.novels;
+              lastUpdated = parsed.last_updated || lastUpdated;
+            }
           }
         }
       } catch (err) {
-        console.error('Error reading library_index.json:', err);
+        console.warn('Warning reading library_index.json (re-syncing):', err);
       }
 
       const allChapters: StoredChapter[] = [];
@@ -1774,7 +1800,7 @@ function ensurePromptTemplateFile(): void {
         novels: newNovels,
         last_updated: updated.last_updated,
       };
-      await fs.promises.writeFile(filePath, JSON.stringify(manifest), 'utf-8');
+      await atomicWriteFile(filePath, JSON.stringify(manifest));
     }
 
     if (hasChanges) {
@@ -1857,13 +1883,44 @@ function ensurePromptTemplateFile(): void {
       }
 
       const libraryBase = getLibraryStorageDir();
-      const current = readLibraryStorage();
-      const novel = current.novels.find((n) => n.id === novelId);
+
+      // Fast Novel Resolution: check cache or index manifest first to avoid 15-28s re-scan of entire library
+      let novel: StoredNovel | undefined = cachedLibraryData?.novels.find((n) => n.id === novelId);
+
+      if (!novel) {
+        const indexPath = getLibraryIndexFilePath();
+        if (fs.existsSync(indexPath)) {
+          try {
+            const raw = fs.readFileSync(indexPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.novels)) {
+              novel = parsed.novels.find((n: StoredNovel) => n.id === novelId);
+            }
+          } catch {}
+        }
+      }
+
+      // Fallback to full readLibraryStorage only if novel is not yet registered in index
+      if (!novel) {
+        const current = readLibraryStorage();
+        novel = current.novels.find((n) => n.id === novelId);
+      }
+
       if (!novel) {
         return res.status(404).json({ error: 'Novel tidak ditemukan.' });
       }
 
-      const novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
+      let novelFolder = resolveNovelFolderOnDisk(libraryBase, novel);
+      if (!fs.existsSync(novelFolder)) {
+        // Fallback: folder may have been renamed or relocated on disk, trigger full resync
+        const current = readLibraryStorage();
+        const freshNovel = current.novels.find((n) => n.id === novelId);
+        if (freshNovel) {
+          novel = freshNovel;
+          novelFolder = resolveNovelFolderOnDisk(libraryBase, freshNovel);
+        }
+      }
+
       if (!fs.existsSync(novelFolder)) {
         return res.status(404).json({ error: 'Folder novel tidak ditemukan di disk.' });
       }
@@ -1877,7 +1934,7 @@ function ensurePromptTemplateFile(): void {
 
       if (targetNum === null && typeof req.query.chapter_id === 'string') {
         const chapId = req.query.chapter_id.trim();
-        const inIndex = current.chapters.find((c) => c.id === chapId && c.novel_id === novelId);
+        const inIndex = cachedLibraryData?.chapters.find((c) => c.id === chapId && c.novel_id === novelId);
         if (inIndex) {
           targetNum = inIndex.nomor_chapter;
         } else {
@@ -1885,6 +1942,16 @@ function ensurePromptTemplateFile(): void {
           if (lastNumMatch) {
             targetNum = parseFloat(lastNumMatch[1]);
           }
+        }
+      }
+
+      // Safety Fallback for non-standard chapter_id when cachedLibraryData is cold
+      if (targetNum === null && typeof req.query.chapter_id === 'string') {
+        const current = readLibraryStorage();
+        const chapId = req.query.chapter_id.trim();
+        const inIndex = current.chapters.find((c) => c.id === chapId && c.novel_id === novelId);
+        if (inIndex) {
+          targetNum = inIndex.nomor_chapter;
         }
       }
 
@@ -1919,6 +1986,37 @@ function ensurePromptTemplateFile(): void {
             if (extracted === targetNum) {
               targetFilePath = path.join(novelFolder, file);
               break;
+            }
+          }
+        }
+      }
+
+      // Safety Fallback: file might have been added externally via Syncthing, re-sync library before giving up
+      if (!targetFilePath) {
+        const current = readLibraryStorage();
+        const freshNovel = current.novels.find((n) => n.id === novelId);
+        if (freshNovel) {
+          const freshFolder = resolveNovelFolderOnDisk(libraryBase, freshNovel);
+          if (fs.existsSync(freshFolder)) {
+            for (const fn of possibleFileNames) {
+              const p = path.join(freshFolder, fn);
+              if (fs.existsSync(p)) {
+                targetFilePath = p;
+                novelFolder = freshFolder;
+                break;
+              }
+            }
+            if (!targetFilePath) {
+              const freshFiles = fs.readdirSync(freshFolder);
+              for (const file of freshFiles) {
+                if ((file.endsWith('.md') || file.endsWith('.txt')) && !file.startsWith('.')) {
+                  if (extractChapterNumber(file) === targetNum) {
+                    targetFilePath = path.join(freshFolder, file);
+                    novelFolder = freshFolder;
+                    break;
+                  }
+                }
+              }
             }
           }
         }
@@ -2158,7 +2256,43 @@ function ensurePromptTemplateFile(): void {
       const mdContent = `# Chapter ${validNum}: ${safeTitle}\n\n> **Novel:** ${sanitizeFilename(novel_title || 'Novel')}\n> **Bahasa:** ${source_lang || 'Asli'} -> ${target_lang || 'Target'}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${target_lang || 'Target'})\n\n${translated_text || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${source_lang || 'Asli'})\n\n${original_text || '*(Kosong)*'}\n`;
 
       fs.writeFileSync(filePath, mdContent, 'utf-8');
-      invalidateLibraryCache();
+      
+      // Update in-memory cache directly to avoid expensive 15-28s re-scan on subsequent reads
+      if (cachedLibraryData) {
+        const matchedNovel = cachedLibraryData.novels.find((n) =>
+          (n.folder_path && path.resolve(n.folder_path) === path.resolve(targetFolder)) ||
+          (novel_title && n.judul === novel_title)
+        );
+        const novelId = matchedNovel?.id || 'novel-generic';
+        const chapId = `chap-${novelId}-${validNum}`;
+        const existingIdx = cachedLibraryData.chapters.findIndex((c) =>
+          (c.novel_id === novelId && c.nomor_chapter === validNum) || c.id === chapId
+        );
+        const updatedEntry: StoredChapter = {
+          id: existingIdx >= 0 ? cachedLibraryData.chapters[existingIdx].id : chapId,
+          novel_id: novelId,
+          nomor_chapter: validNum,
+          judul_chapter: safeTitle,
+          teks_asli: original_text || '',
+          teks_terjemahan: translated_text || '',
+          status_pengerjaan: (translated_text && translated_text.trim().length > 0) ? 'Selesai' : 'Belum',
+          createdAt: existingIdx >= 0 ? cachedLibraryData.chapters[existingIdx].createdAt : new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        if (existingIdx >= 0) {
+          cachedLibraryData.chapters[existingIdx] = updatedEntry;
+        } else {
+          cachedLibraryData.chapters.push(updatedEntry);
+        }
+        try {
+          const libraryBase = getLibraryStorageDir();
+          const indexPath = getLibraryIndexFilePath();
+          if (fs.existsSync(indexPath)) cachedLibraryIndexMtime = fs.statSync(indexPath).mtimeMs;
+          if (fs.existsSync(libraryBase)) cachedLibraryBaseMtime = fs.statSync(libraryBase).mtimeMs;
+        } catch {}
+      } else {
+        invalidateLibraryCache();
+      }
       res.json({ status: 'success', path: filePath });
     } catch (error: any) {
       console.error('Error saving chapter file to disk:', error);

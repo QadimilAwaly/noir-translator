@@ -309,8 +309,8 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           <button
             onClick={onExtractGlossary}
             disabled={isExtracting || !activeChapter.teks_terjemahan}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1F2229] hover:bg-gray-800 disabled:opacity-50 text-gray-200 border border-gray-700 rounded text-xs font-medium transition-all shadow-sm"
-            title="Ekstrak istilah baru otomatis dari chapter ini ke Glosarium"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1F2229] hover:bg-gray-800 disabled:opacity-50 text-gray-200 border border-gray-700 rounded text-xs font-medium transition-all shadow-sm group"
+            title="Ekstrak istilah baru otomatis dari chapter ini ke Glosarium (Alt+G atau Ctrl+Shift+G)"
           >
             {isExtracting ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
@@ -318,13 +318,17 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
             )}
             <span className="hidden md:inline">Ekstrak Glosarium</span>
+            <kbd className="hidden lg:inline text-[10px] font-mono bg-gray-800 px-1 py-0.5 rounded text-gray-400 border border-gray-700 ml-0.5">
+              Alt+G
+            </kbd>
           </button>
 
           {/* Phase 1 & 2: Translate Chapter */}
           <button
             onClick={onTranslateChapter}
             disabled={isTranslating || !activeChapter.teks_asli.trim()}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded text-xs shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98]"
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded text-xs shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98] group"
+            title="Menerjemahkan chapter ini dengan AI (Ctrl+Enter atau Alt+T)"
           >
             {isTranslating ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
@@ -332,6 +336,9 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               <Wand2 className="w-3.5 h-3.5 text-white fill-white" />
             )}
             <span>{isTranslating ? 'Menerjemahkan...' : 'Translate Chapter'}</span>
+            <kbd className="hidden sm:inline text-[10px] font-mono bg-indigo-700/80 px-1.5 py-0.5 rounded text-indigo-100 border border-indigo-400/30 ml-1">
+              Ctrl+Enter
+            </kbd>
           </button>
         </div>
       </div>

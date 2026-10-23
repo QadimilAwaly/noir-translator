@@ -106,6 +106,12 @@ export const NewChapterModal: React.FC<NewChapterModalProps> = ({
               placeholder="Tempel atau ketik teks bab novel di sini..."
               value={teksAsli}
               onChange={(e) => setTeksAsli(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
               rows={6}
               className="w-full p-2.5 bg-[#0F1113] border border-gray-800 rounded text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-sans resize-none"
             />
@@ -121,9 +127,13 @@ export const NewChapterModal: React.FC<NewChapterModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded transition-colors group"
+              title="Tambah Bab (Ctrl+Enter)"
             >
-              Tambah Bab
+              <span>Tambah Bab</span>
+              <kbd className="hidden sm:inline text-[9px] font-mono bg-indigo-700/80 px-1.5 py-0.5 rounded text-indigo-100 border border-indigo-400/30">
+                Ctrl+Enter
+              </kbd>
             </button>
           </div>
         </form>

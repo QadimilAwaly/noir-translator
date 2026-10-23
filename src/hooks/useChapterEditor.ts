@@ -9,6 +9,7 @@ import {
   saveStoredGlossaries,
   deleteStoredChapter,
   deleteStoredGlossary,
+  updateStoredGlossary,
   deleteStoredReference,
   generateUniqueId,
   fetchServerStorage,
@@ -50,6 +51,7 @@ export interface UseChapterEditorReturn {
   createChapter: (novelId: string, data: { nomor_chapter: number; judul_chapter: string; teks_asli: string }) => Chapter;
   deleteChapter: (chapterId: string, novelId?: string) => Chapter[];
   addGlossaryItem: (novelId: string, item: Omit<GlossaryItem, 'id' | 'novel_id'>) => GlossaryItem;
+  updateGlossaryItem: (id: string, patch: Partial<Omit<GlossaryItem, 'id' | 'novel_id'>>, novelId: string) => GlossaryItem | undefined;
   deleteGlossaryItem: (id: string, novelId: string) => GlossaryItem[];
   updateGlossaryGender: (id: string, gender: GenderTag | undefined, novelId: string) => GlossaryItem[];
   addReferenceItem: (novelId: string, item: Omit<ReferenceItem, 'id' | 'novel_id'>) => ReferenceItem;
@@ -343,6 +345,28 @@ export function useChapterEditor(): UseChapterEditorReturn {
     return returnItem;
   }, []);
 
+  const updateGlossaryItem = useCallback((
+    id: string,
+    patch: Partial<Omit<GlossaryItem, 'id' | 'novel_id'>>,
+    novelId: string
+  ): GlossaryItem | undefined => {
+    let updatedItem: GlossaryItem | undefined;
+    const currentList = getStoredGlossaries(novelId);
+    const existingIndex = currentList.findIndex((g) => g.id === id);
+    if (existingIndex === -1) return undefined;
+
+    updatedItem = {
+      ...currentList[existingIndex],
+      ...patch,
+      id,
+      novel_id: novelId,
+    };
+
+    const updated = updateStoredGlossary(id, patch, novelId);
+    setGlossaries(updated);
+    return updatedItem;
+  }, []);
+
   const deleteGlossaryItem = useCallback((id: string, novelId: string): GlossaryItem[] => {
     const updated = deleteStoredGlossary(id, novelId);
     setGlossaries(updated);
@@ -403,6 +427,7 @@ export function useChapterEditor(): UseChapterEditorReturn {
     createChapter,
     deleteChapter,
     addGlossaryItem,
+    updateGlossaryItem,
     deleteGlossaryItem,
     updateGlossaryGender,
     addReferenceItem,

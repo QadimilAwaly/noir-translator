@@ -81,8 +81,9 @@ cmd_start() {
     exec "$DIR/scripts/run.sh"
   else
     echo "🚀 Menjalankan Noir Translator sebagai background daemon..."
-    nohup "$DIR/scripts/run.sh" > /dev/null 2>&1 </dev/null &
+    setsid nohup "$DIR/scripts/run.sh" >> "$LOG_FILE" 2>&1 </dev/null &
     local dpid=$!
+    disown "$dpid" 2>/dev/null || true
     echo "$dpid" > "$PID_FILE"
 
     # Tunggu hingga server node siap

@@ -35,6 +35,7 @@ interface ContextPanelProps {
   onAddReferenceItem: (item: Omit<ReferenceItem, 'id' | 'novel_id'>) => void;
   onDeleteReferenceItem: (id: string) => void;
   onAddGlossaryItem: (item: Omit<GlossaryItem, 'id' | 'novel_id'>) => void;
+  onEditGlossaryItem?: (item: GlossaryItem) => void;
   onDeleteGlossaryItem: (id: string) => void;
   onUpdateGlossaryGender?: (id: string, gender: GenderTag | undefined) => void;
   onOpenNewGlossaryModal: () => void;
@@ -53,6 +54,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   onAddReferenceItem,
   onDeleteReferenceItem,
   onAddGlossaryItem,
+  onEditGlossaryItem,
   onDeleteGlossaryItem,
   onUpdateGlossaryGender,
   onOpenNewGlossaryModal,
@@ -242,7 +244,9 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
               filteredGlossary.map((item) => (
                 <div
                   key={item.id}
-                  className="p-2.5 bg-[#1F2229] border border-gray-800 rounded hover:border-indigo-500/40 transition-all text-xs space-y-1 group relative"
+                  onDoubleClick={() => onEditGlossaryItem?.(item)}
+                  className="p-2.5 bg-[#1F2229] border border-gray-800 rounded hover:border-indigo-500/40 transition-all text-xs space-y-1 group relative cursor-pointer"
+                  title="Klik dua kali atau klik tombol edit untuk mengubah istilah"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-mono text-indigo-300 font-semibold text-xs">
@@ -291,6 +295,18 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                         {item.kategori}
                       </span>
                       <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditGlossaryItem?.(item);
+                        }}
+                        className="p-1 text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded transition-colors"
+                        title={`Edit Istilah "${item.istilah_asli}"`}
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (confirm(`Hapus istilah "${item.istilah_asli}" (${item.istilah_terjemahan}) dari glosarium?`)) {
