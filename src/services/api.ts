@@ -39,7 +39,7 @@ export async function translateChapterApi(reqData: TranslateRequest): Promise<{ 
 
 export async function extractGlossaryApi(reqData: ExtractGlossaryRequest): Promise<{ terms: ExtractedTerm[] }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
+  const timer = setTimeout(() => controller.abort(), 120000);
   try {
     const response = await fetch('/api/extract-glossary', {
       method: 'POST',

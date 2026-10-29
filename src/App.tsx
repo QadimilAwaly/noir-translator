@@ -155,6 +155,26 @@ export default function App() {
     });
   };
 
+  // Live Tab Title: Real-time status in background/active browser tabs
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const novelTitle = activeNovel?.judul?.trim();
+    const chapterNum = activeChapter?.nomor_chapter;
+    const base = novelTitle
+      ? chapterNum !== undefined
+        ? `Bab ${chapterNum} - ${novelTitle}`
+        : `${novelTitle} | Noir Translator`
+      : 'Noir Translator';
+
+    if (isTranslating) {
+      document.title = `⏳ [Menerjemahkan...] ${base}`;
+    } else if (isExtracting) {
+      document.title = `🔍 [Ekstrak Glosarium...] ${base}`;
+    } else {
+      document.title = base;
+    }
+  }, [isTranslating, isExtracting, activeNovel?.judul, activeChapter?.nomor_chapter]);
+
   const showToast = (msg: string | ToastConfig) => {
     if (typeof msg === 'string') {
       setToast({ message: msg });
@@ -437,12 +457,11 @@ export default function App() {
       }
       handleUpdateChapterStatus('Selesai');
 
-      // Auto-extract glossary after translation finishes if enabled
+      // Auto-extract glossary after translation finishes if enabled (continuous async promise chain, no setTimeout)
       if (autoExtractGlossaryRef.current && result.translatedText) {
         showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan! Mengekstrak glosarium otomatis...`);
-        setTimeout(() => {
-          handleExtractGlossary(result.translatedText);
-        }, 300);
+        setIsTranslating(false);
+        await handleExtractGlossary(result.translatedText);
       } else {
         showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan!`);
       }

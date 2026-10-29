@@ -72,9 +72,15 @@ describe('Workflow Keyboard Shortcuts Implementation', () => {
     expect(appTsx).toContain("localStorage.setItem('noir_auto_extract_glossary'");
     expect(appTsx).toContain('autoExtractGlossaryRef');
 
-    // App.tsx auto extraction trigger on translation complete
+    // App.tsx auto extraction trigger on translation complete (direct await without setTimeout to prevent background tab throttling)
     expect(appTsx).toMatch(/if\s*\(\s*autoExtractGlossaryRef\.current\s*&&\s*result\.translatedText\s*\)/);
-    expect(appTsx).toMatch(/handleExtractGlossary\(result\.translatedText\)/);
+    expect(appTsx).toMatch(/await\s+handleExtractGlossary\(result\.translatedText\)/);
+    expect(appTsx).not.toMatch(/setTimeout\(\s*\(\)\s*=>\s*\{\s*handleExtractGlossary/);
+
+    // Live tab title tracking for background tab observability
+    expect(appTsx).toContain('document.title');
+    expect(appTsx).toContain('⏳ [Menerjemahkan...]');
+    expect(appTsx).toContain('🔍 [Ekstrak Glosarium...]');
   });
 
   it('NewChapterModal.tsx should support Ctrl+Enter to submit directly from textarea', () => {
