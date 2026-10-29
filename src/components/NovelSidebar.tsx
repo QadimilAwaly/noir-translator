@@ -384,14 +384,11 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
                   <div className="pt-1">
                     <button
                       onClick={onAddChapter}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded text-xs font-semibold transition-colors group"
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded text-xs font-semibold transition-colors"
                       title="Tambah Bab Baru (Alt+N)"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Tambah Bab</span>
-                      <kbd className="hidden sm:inline text-[9px] font-mono bg-indigo-900/40 px-1 py-0.2 rounded text-indigo-300 border border-indigo-500/20 ml-1 group-hover:border-indigo-400/40">
-                        Alt+N
-                      </kbd>
                     </button>
                   </div>
                 </div>

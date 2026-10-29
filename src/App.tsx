@@ -125,6 +125,36 @@ export default function App() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [toast, setToast] = useState<ToastConfig | null>(null);
 
+  // Feature: Auto-Extract Glossary after translation finishes (toggleable, persisted in localStorage)
+  const [autoExtractGlossary, setAutoExtractGlossary] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('noir_auto_extract_glossary');
+        return saved === 'true';
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+  const autoExtractGlossaryRef = useRef(autoExtractGlossary);
+  autoExtractGlossaryRef.current = autoExtractGlossary;
+
+  const handleToggleAutoExtractGlossary = () => {
+    setAutoExtractGlossary((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('noir_auto_extract_glossary', String(next));
+      } catch {}
+      showToast(
+        next
+          ? 'Ekstraksi glosarium otomatis: AKTIF'
+          : 'Ekstraksi glosarium otomatis: NONAKTIF'
+      );
+      return next;
+    });
+  };
+
   const showToast = (msg: string | ToastConfig) => {
     if (typeof msg === 'string') {
       setToast({ message: msg });
@@ -406,7 +436,16 @@ export default function App() {
         handleRenameChapter(activeChapter.id, result.suggestedTitle);
       }
       handleUpdateChapterStatus('Selesai');
-      showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan!`);
+
+      // Auto-extract glossary after translation finishes if enabled
+      if (autoExtractGlossaryRef.current && result.translatedText) {
+        showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan! Mengekstrak glosarium otomatis...`);
+        setTimeout(() => {
+          handleExtractGlossary(result.translatedText);
+        }, 300);
+      } else {
+        showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan!`);
+      }
     } catch (err: any) {
       console.error(err);
       showToast(`Gagal menerjemahkan: ${err.message || 'Kesalahan jaringan.'}`);
@@ -416,8 +455,9 @@ export default function App() {
   };
 
   // Phase 3: Automatic Glossary Extraction & AI Progression
-  const handleExtractGlossary = async () => {
-    if (!activeChapter || !activeChapter.teks_terjemahan) return;
+  const handleExtractGlossary = async (overrideTranslatedText?: string) => {
+    const targetTranslated = overrideTranslatedText ?? activeChapter?.teks_terjemahan;
+    if (!activeChapter || !targetTranslated || !targetTranslated.trim()) return;
 
     setIsExtracting(true);
     try {
@@ -426,7 +466,7 @@ export default function App() {
 
       const result = await extractGlossaryApi({
         teks_asli: activeChapter.teks_asli,
-        teks_terjemahan: activeChapter.teks_terjemahan,
+        teks_terjemahan: targetTranslated,
         nomor_chapter: activeChapter.nomor_chapter,
         bahasa_sumber: activeNovel?.bahasa_sumber || 'Mandarin',
         bahasa_target: activeNovel?.bahasa_target || 'Indonesia',
@@ -773,6 +813,8 @@ export default function App() {
           onUpdateChapterStatus={handleUpdateChapterStatus}
           onTranslateChapter={handleTranslateChapter}
           onExtractGlossary={handleExtractGlossary}
+          autoExtractGlossary={autoExtractGlossary}
+          onToggleAutoExtractGlossary={handleToggleAutoExtractGlossary}
           onUpdateChapterMeta={handleUpdateChapterMeta}
           onUpdateNovelLanguages={handleUpdateNovelLanguages}
           onAddNovel={() => setIsNewNovelModalOpen(true)}

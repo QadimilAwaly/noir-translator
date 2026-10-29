@@ -47,13 +47,34 @@ describe('Workflow Keyboard Shortcuts Implementation', () => {
     expect(appTsx).toMatch(/if\s*\(\s*(?:state\.)?isAnyModalOpen\s*\)\s*return;/);
   });
 
-  it('SplitEditor.tsx should display visual kbd shortcut hints for Translate and Extract Glossary', () => {
-    expect(splitEditorTsx).toContain('Ctrl+Enter');
-    expect(splitEditorTsx).toContain('Alt+G');
+  it('SplitEditor.tsx, NovelSidebar.tsx, and NewChapterModal.tsx should not render distracting kbd badges inside action buttons', () => {
+    // Action buttons must not contain <kbd> badges on their faces
+    expect(splitEditorTsx).not.toMatch(/<button[\s\S]*?<kbd[\s\S]*?<\/kbd>[\s\S]*?Translate Chapter/);
+    expect(splitEditorTsx).not.toMatch(/<button[\s\S]*?<kbd[\s\S]*?<\/kbd>[\s\S]*?Ekstrak Glosarium/);
+    expect(novelSidebarTsx).not.toMatch(/<button[\s\S]*?<kbd[\s\S]*?<\/kbd>[\s\S]*?Tambah Bab/);
+    expect(newChapterModalTsx).not.toMatch(/<button[\s\S]*?<kbd[\s\S]*?<\/kbd>[\s\S]*?Tambah Bab/);
+
+    // Tooltip titles must retain shortcut cues for accessibility
+    expect(splitEditorTsx).toContain('title="Menerjemahkan chapter ini dengan AI (Ctrl+Enter)"');
+    expect(splitEditorTsx).toContain('title="Ekstrak istilah baru otomatis dari chapter ini ke Glosarium (Alt+G)"');
+    expect(novelSidebarTsx).toContain('title="Tambah Bab Baru (Alt+N)"');
+    expect(newChapterModalTsx).toContain('title="Tambah Bab (Ctrl+Enter)"');
   });
 
-  it('NovelSidebar.tsx should display visual kbd shortcut hint for Tambah Bab', () => {
-    expect(novelSidebarTsx).toContain('Alt+N');
+  it('SplitEditor.tsx and App.tsx should implement toggleable Auto-Extract Glossary after translation', () => {
+    // SplitEditor toggle UI
+    expect(splitEditorTsx).toContain('autoExtractGlossary');
+    expect(splitEditorTsx).toContain('onToggleAutoExtractGlossary');
+    expect(splitEditorTsx).toContain('Auto-Ekstrak:');
+
+    // App.tsx state & localStorage persistence
+    expect(appTsx).toContain("localStorage.getItem('noir_auto_extract_glossary')");
+    expect(appTsx).toContain("localStorage.setItem('noir_auto_extract_glossary'");
+    expect(appTsx).toContain('autoExtractGlossaryRef');
+
+    // App.tsx auto extraction trigger on translation complete
+    expect(appTsx).toMatch(/if\s*\(\s*autoExtractGlossaryRef\.current\s*&&\s*result\.translatedText\s*\)/);
+    expect(appTsx).toMatch(/handleExtractGlossary\(result\.translatedText\)/);
   });
 
   it('NewChapterModal.tsx should support Ctrl+Enter to submit directly from textarea', () => {

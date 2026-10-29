@@ -127,13 +127,10 @@ export const NewChapterModal: React.FC<NewChapterModalProps> = ({
             </button>
             <button
               type="submit"
-              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded transition-colors group"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded transition-colors"
               title="Tambah Bab (Ctrl+Enter)"
             >
-              <span>Tambah Bab</span>
-              <kbd className="hidden sm:inline text-[9px] font-mono bg-indigo-700/80 px-1.5 py-0.5 rounded text-indigo-100 border border-indigo-400/30">
-                Ctrl+Enter
-              </kbd>
+              Tambah Bab
             </button>
           </div>
         </form>

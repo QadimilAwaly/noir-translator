@@ -28,6 +28,8 @@ interface SplitEditorProps {
   onUpdateChapterStatus: (status: ChapterStatus) => void;
   onTranslateChapter: () => void;
   onExtractGlossary: () => void;
+  autoExtractGlossary?: boolean;
+  onToggleAutoExtractGlossary?: () => void;
   onUpdateChapterMeta?: (id: string, patch: { nomor_chapter?: number; judul_chapter?: string }) => void;
   onUpdateNovelLanguages?: (source: LanguageCode, target: LanguageCode) => void;
   onAddNovel?: () => void;
@@ -48,6 +50,8 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
   onUpdateChapterStatus,
   onTranslateChapter,
   onExtractGlossary,
+  autoExtractGlossary = false,
+  onToggleAutoExtractGlossary,
   onUpdateChapterMeta,
   onUpdateNovelLanguages,
   onAddNovel,
@@ -309,8 +313,8 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
           <button
             onClick={onExtractGlossary}
             disabled={isExtracting || !activeChapter.teks_terjemahan}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1F2229] hover:bg-gray-800 disabled:opacity-50 text-gray-200 border border-gray-700 rounded text-xs font-medium transition-all shadow-sm group"
-            title="Ekstrak istilah baru otomatis dari chapter ini ke Glosarium (Alt+G atau Ctrl+Shift+G)"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1F2229] hover:bg-gray-800 disabled:opacity-50 text-gray-200 border border-gray-700 rounded text-xs font-medium transition-all shadow-sm"
+            title="Ekstrak istilah baru otomatis dari chapter ini ke Glosarium (Alt+G)"
           >
             {isExtracting ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
@@ -318,17 +322,40 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
             )}
             <span className="hidden md:inline">Ekstrak Glosarium</span>
-            <kbd className="hidden lg:inline text-[10px] font-mono bg-gray-800 px-1 py-0.5 rounded text-gray-400 border border-gray-700 ml-0.5">
-              Alt+G
-            </kbd>
           </button>
+
+          {/* Auto-Extract Toggle Switch */}
+          {onToggleAutoExtractGlossary && (
+            <button
+              onClick={onToggleAutoExtractGlossary}
+              type="button"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border transition-all ${
+                autoExtractGlossary
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                  : 'bg-[#1F2229] text-gray-400 border-gray-700/80 hover:text-gray-300 hover:bg-gray-800'
+              }`}
+              title={
+                autoExtractGlossary
+                  ? 'Ekstraksi otomatis aktif: glosarium akan diekstrak otomatis setelah translasi selesai'
+                  : 'Ekstraksi otomatis nonaktif: klik untuk mengaktifkan ekstraksi otomatis setelah translasi'
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  autoExtractGlossary ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'
+                }`}
+              />
+              <span className="hidden sm:inline">Auto-Ekstrak:</span>
+              <span className="font-semibold">{autoExtractGlossary ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
 
           {/* Phase 1 & 2: Translate Chapter */}
           <button
             onClick={onTranslateChapter}
             disabled={isTranslating || !activeChapter.teks_asli.trim()}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded text-xs shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98] group"
-            title="Menerjemahkan chapter ini dengan AI (Ctrl+Enter atau Alt+T)"
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded text-xs shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98]"
+            title="Menerjemahkan chapter ini dengan AI (Ctrl+Enter)"
           >
             {isTranslating ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
@@ -336,9 +363,6 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
               <Wand2 className="w-3.5 h-3.5 text-white fill-white" />
             )}
             <span>{isTranslating ? 'Menerjemahkan...' : 'Translate Chapter'}</span>
-            <kbd className="hidden sm:inline text-[10px] font-mono bg-indigo-700/80 px-1.5 py-0.5 rounded text-indigo-100 border border-indigo-400/30 ml-1">
-              Ctrl+Enter
-            </kbd>
           </button>
         </div>
       </div>
