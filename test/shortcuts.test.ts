@@ -83,6 +83,17 @@ describe('Workflow Keyboard Shortcuts Implementation', () => {
     expect(appTsx).toContain('🔍 [Ekstrak Glosarium...]');
   });
 
+  it('handleExtractGlossary and SplitEditor.tsx should prevent SyntheticEvent leakage into manual glossary extraction', () => {
+    // SplitEditor must call onExtractGlossary via zero-argument arrow function
+    expect(splitEditorTsx).toMatch(/onClick=\{\(\)\s*=>\s*onExtractGlossary\(\)\}/);
+
+    // App.tsx passes zero-argument wrapper to SplitEditor
+    expect(appTsx).toMatch(/onExtractGlossary=\{\(\)\s*=>\s*handleExtractGlossary\(\)\}/);
+
+    // handleExtractGlossary must defensively check typeof overrideTranslatedText === 'string'
+    expect(appTsx).toMatch(/typeof\s+overrideTranslatedText\s*===\s*'string'/);
+  });
+
   it('NewChapterModal.tsx should support Ctrl+Enter to submit directly from textarea', () => {
     expect(newChapterModalTsx).toMatch(/\(e\.ctrlKey\s*\|\|\s*e\.metaKey\)\s*&&\s*e\.key\s*===\s*'Enter'/);
   });

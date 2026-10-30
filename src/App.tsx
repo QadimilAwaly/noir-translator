@@ -474,9 +474,16 @@ export default function App() {
   };
 
   // Phase 3: Automatic Glossary Extraction & AI Progression
-  const handleExtractGlossary = async (overrideTranslatedText?: string) => {
-    const targetTranslated = overrideTranslatedText ?? activeChapter?.teks_terjemahan;
-    if (!activeChapter || !targetTranslated || !targetTranslated.trim()) return;
+  const handleExtractGlossary = async (overrideTranslatedText?: string | unknown) => {
+    // Defensively sanitize: if called directly from a click event, overrideTranslatedText will be a MouseEvent object
+    const textOverride = typeof overrideTranslatedText === 'string' ? overrideTranslatedText : undefined;
+    const targetTranslated = textOverride ?? activeChapter?.teks_terjemahan;
+    if (!activeChapter || !targetTranslated || typeof targetTranslated !== 'string' || !targetTranslated.trim()) {
+      if (!textOverride && (!activeChapter?.teks_terjemahan || !activeChapter.teks_terjemahan.trim())) {
+        showToast('Teks terjemahan masih kosong. Terjemahkan terlebih dahulu sebelum ekstrak glosarium.');
+      }
+      return;
+    }
 
     setIsExtracting(true);
     try {
@@ -831,7 +838,7 @@ export default function App() {
           onUpdateChapterText={handleUpdateChapterText}
           onUpdateChapterStatus={handleUpdateChapterStatus}
           onTranslateChapter={handleTranslateChapter}
-          onExtractGlossary={handleExtractGlossary}
+          onExtractGlossary={() => handleExtractGlossary()}
           autoExtractGlossary={autoExtractGlossary}
           onToggleAutoExtractGlossary={handleToggleAutoExtractGlossary}
           onUpdateChapterMeta={handleUpdateChapterMeta}

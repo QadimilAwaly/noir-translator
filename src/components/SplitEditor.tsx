@@ -311,7 +311,7 @@ export const SplitEditor: React.FC<SplitEditorProps> = ({
 
           {/* Phase 3: Extract Glossary */}
           <button
-            onClick={onExtractGlossary}
+            onClick={() => onExtractGlossary()}
             disabled={isExtracting || !activeChapter.teks_terjemahan}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1F2229] hover:bg-gray-800 disabled:opacity-50 text-gray-200 border border-gray-700 rounded text-xs font-medium transition-all shadow-sm"
             title="Ekstrak istilah baru otomatis dari chapter ini ke Glosarium (Alt+G)"
