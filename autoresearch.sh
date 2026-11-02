@@ -38,20 +38,7 @@ SERVER_PID=$!
 sleep 2
 
 # Latency + download size over loopback (simulates Tailscale HTTP tunnel payload)
-# Use time to capture user CPU time of curl only
-CURL_OUT=$(mktemp curl_out.XXXXXX)
-TIME_ERR=$(mktemp time_err.XXXXXX)
-(/bin/time -p curl -s -o /dev/null -w '%{size_download} %{time_total}\n' \
-  --connect-timeout 2 --max-time 5 \
-  http://localhost:8765/chapters) > "$CURL_OUT" 2> "$TIME_ERR" || true
-curl_output=$(cat "$CURL_OUT" 2>/dev/null)
-cpu_user_s=$(grep "user" "$TIME_ERR" 2>/dev/null | awk '{print $2}' | tail -n1 || echo "0")
-if [ -z "$cpu_user_s" ]; then cpu_user_s=0; fi
-rm -f "$CURL_OUT" "$TIME_ERR"
-read -r download_bytes latency_s <<< "$curl_output" || { download_bytes=0; latency_s=0; }
-# Convert
-cpu_user_s=${cpu_user_s:-0}; cpu_user_ms=$(python3 -c "print(round(float('$cpu_user_s')*1000, 2))")
-latency_s=${latency_s:-0}; latency_ms=$(python3 -c "print(round(float('$latency_s')*1000, 2))")
+python3 scripts/measure_fetch.py http://localhost:8765/chapters
 
 # Kill server
 kill $SERVER_PID 2>/dev/null || true
@@ -60,7 +47,4 @@ wait $SERVER_PID 2>/dev/null || true
 echo "METRIC payload_bytes=$uncompressed_bytes"
 echo "METRIC trimmed_bytes=$trimmed_bytes"
 echo "METRIC compressed_bytes=$compressed_bytes"
-echo "METRIC download_bytes=$download_bytes"
-echo "METRIC latency_ms=$latency_ms"
-echo "METRIC cpu_user_ms=$cpu_user_ms"
 echo "METRIC payload_reduction_percent=$(python3 -c "print(round((1-$trimmed_bytes/$uncompressed_bytes)*100,1))")"
