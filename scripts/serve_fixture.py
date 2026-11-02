@@ -14,8 +14,14 @@ class H(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            with open("fixture_chapters.json", "rb") as f:
-                self.wfile.write(f.read())
+            if "gzip" in self.headers.get("Accept-Encoding",""):
+                self.send_header("Content-Encoding","gzip")
+                self.end_headers()
+                with open("fixture_trimmed.json.gz","rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                with open("fixture_chapters.json","rb") as f:
+                    self.wfile.write(f.read())
         else:
             self.send_response(404); self.end_headers()
     def log_message(self, fmt, *args): pass
