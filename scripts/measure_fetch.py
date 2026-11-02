@@ -5,7 +5,7 @@ url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8765/chapters"
 t1 = time.perf_counter()
 usage_before = resource.getrusage(resource.RUSAGE_CHILDREN)
 proc = subprocess.run(
-    ["curl", "-s", "--compressed", "-o", "/dev/null", "-w", "%{size_download} %{time_total}\n",
+    ["curl", "-s", "-o", "/dev/null", "-w", "%{size_download} %{time_total}\n",
      "--connect-timeout", "2", "--max-time", "5", url],
     capture_output=True, text=True)
 t2 = time.perf_counter()
