@@ -38,7 +38,7 @@ SERVER_PID=$!
 sleep 2
 
 # Latency + download size over loopback (simulates Tailscale HTTP tunnel payload)
-python3 scripts/measure_fetch.py http://localhost:8765/chapters
+python3 scripts/measure_split.py
 
 # Kill server
 kill $SERVER_PID 2>/dev/null || true
