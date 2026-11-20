@@ -4,7 +4,6 @@ import {
   ChevronRight,
   ChevronDown,
   Plus,
-  FileText,
   Search,
   CheckCircle,
   Clock,
@@ -80,21 +79,33 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
     switch (status) {
       case 'Selesai':
         return (
-          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">
-            <CheckCircle className="w-3 h-3 text-emerald-400" /> Selesai
+          <span
+            className="inline-flex items-center justify-center shrink-0 text-emerald-400"
+            title="Status: Selesai"
+            aria-label="Status: Selesai"
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
           </span>
         );
       case 'Sedang':
         return (
-          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-1.5 py-0.5 rounded">
-            <Clock className="w-3 h-3 text-yellow-500" /> Sedang
+          <span
+            className="inline-flex items-center justify-center shrink-0 text-yellow-500"
+            title="Status: Sedang"
+            aria-label="Status: Sedang"
+          >
+            <Clock className="w-3.5 h-3.5" />
           </span>
         );
       case 'Belum':
       default:
         return (
-          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-400 border border-gray-700 px-1.5 py-0.5 rounded">
-            <AlertCircle className="w-3 h-3 text-gray-400" /> Belum
+          <span
+            className="inline-flex items-center justify-center shrink-0 text-gray-500"
+            title="Status: Belum"
+            aria-label="Status: Belum"
+          >
+            <AlertCircle className="w-3.5 h-3.5" />
           </span>
         );
     }
@@ -284,14 +295,13 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
                           <div
                             key={chap.id}
                             onClick={() => onSelectChapter(chap.id)}
-                            className={`group flex items-center justify-between p-2 rounded cursor-pointer text-xs transition-all border ${
+                            className={`group flex items-center justify-between gap-1.5 px-2 py-1.5 rounded cursor-pointer text-xs transition-all border ${
                               isChapSelected
                                 ? 'bg-indigo-600/10 border-l-2 border-indigo-500 border-t-transparent border-r-transparent border-b-transparent text-indigo-400 font-semibold'
                                 : 'bg-[#0F1113] border-gray-800/50 hover:bg-white/5 text-gray-400 hover:text-gray-200'
                             }`}
                           >
-                            <div className="flex items-center gap-2 overflow-hidden pr-2 flex-1">
-                              <FileText className={`w-3.5 h-3.5 shrink-0 ${isChapSelected ? 'text-indigo-400' : 'text-gray-500'}`} />
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
                               {editingChapterId === chap.id ? (
                                 <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                                   <input
@@ -342,33 +352,38 @@ export const NovelSidebar: React.FC<NovelSidebarProps> = ({
                                   </button>
                                 </div>
                               ) : (
-                                <span className="truncate">
+                                <span
+                                  className="truncate flex-1 min-w-0"
+                                  title={`Bab ${chap.nomor_chapter}: ${chap.judul_chapter}`}
+                                >
                                   Bab {chap.nomor_chapter}: {chap.judul_chapter}
                                 </span>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="flex items-center gap-1 shrink-0">
                               {getStatusBadge(chap.status_pengerjaan)}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingChapterId(chap.id);
-                                  setChapterTitleInput(chap.judul_chapter);
-                                  setChapterNumberInput(chap.nomor_chapter);
-                                }}
-                                title="Ubah Judul Chapter"
-                                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-indigo-400 rounded transition-opacity"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={(e) => onDeleteChapter(chap.id, e)}
-                                title="Hapus Chapter"
-                                className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-500 hover:text-red-400 rounded transition-opacity"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                              <div className="hidden group-hover:flex items-center gap-0.5">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingChapterId(chap.id);
+                                    setChapterTitleInput(chap.judul_chapter);
+                                    setChapterNumberInput(chap.nomor_chapter);
+                                  }}
+                                  title="Ubah Judul Chapter"
+                                  className="p-0.5 text-gray-500 hover:text-indigo-400 rounded"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => onDeleteChapter(chap.id, e)}
+                                  title="Hapus Chapter"
+                                  className="p-0.5 text-gray-500 hover:text-red-400 rounded"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
