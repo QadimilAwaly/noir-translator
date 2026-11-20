@@ -439,6 +439,22 @@ export function saveStoredChapters(chapters: Chapter[]) {
   syncServerStorage({ chapters }, true);
 }
 
+export function cacheChapterContentInMemory(chapter: Chapter) {
+  const idx = inMemoryLibrary.chapters.findIndex(
+    (c) => c.id === chapter.id || (c.novel_id === chapter.novel_id && c.nomor_chapter === chapter.nomor_chapter)
+  );
+  if (idx >= 0) {
+    inMemoryLibrary.chapters[idx] = {
+      ...inMemoryLibrary.chapters[idx],
+      ...chapter,
+      teks_asli: chapter.teks_asli || inMemoryLibrary.chapters[idx].teks_asli,
+      teks_terjemahan: chapter.teks_terjemahan || inMemoryLibrary.chapters[idx].teks_terjemahan,
+    };
+  } else {
+    inMemoryLibrary.chapters.push(chapter);
+  }
+}
+
 export function deleteStoredChapter(chapterId: string, novelId?: string): Chapter[] {
   inMemoryLibrary.chapters = inMemoryLibrary.chapters.filter((c) => c.id !== chapterId);
 

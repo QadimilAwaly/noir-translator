@@ -65,5 +65,6 @@ ${makeDataSection('GLOSARIUM', glossaryPrompt)}
 
 ${makeDataSection(sourceTag, teks_asli)}
 
-Terjemahkan teks di atas ke ${bahasa_target || 'Target'} sesuai aturan dan glosarium di atas:`;
+Terjemahkan teks di atas ke ${bahasa_target || 'Target'} sesuai aturan dan glosarium di atas.
+PENTING: Baris pertama WAJIB [JUDUL_BAB: Judul Bab Dalam Bahasa ${bahasa_target || 'Target'}]. DILARANG membuat tag [JUDUL_NOVEL] atau tag penutup:`;
 }

@@ -432,6 +432,20 @@ describe('Server-Backed Persistent Storage & Config Stability', () => {
     assert.ok(headerContent.includes('onReloadFromDisk'), 'Header.tsx should accept onReloadFromDisk');
     assert.ok(headerContent.includes('Reload dari Disk'), 'Header.tsx should render Reload dari Disk button');
   });
+
+  test('extractAndSanitizeChapterTitle should clean hallucinated [JUDUL_NOVEL] and extract chapter title', () => {
+    const { extractAndSanitizeChapterTitle } = require('../src/services/chapterParser');
+    const inputWithNovelTag = `[JUDUL_NOVEL]Mad Lady Nia Liston[/JUDUL_NOVEL] - Chapter 31\n\nThe breakfast table at the Silver household always featured a magic crystal plate.`;
+    const res = extractAndSanitizeChapterTitle(inputWithNovelTag);
+    assert.equal(res.suggestedTitle, 'Chapter 31');
+    assert.equal(res.cleanedText, 'The breakfast table at the Silver household always featured a magic crystal plate.');
+    assert.ok(!res.cleanedText.includes('JUDUL_NOVEL'), 'Leaked tag must be completely removed');
+
+    const inputStandard = `[JUDUL_BAB: Chapter 31 - Meja Sarapan]\n\nIsi bab dimulai di sini.`;
+    const res2 = extractAndSanitizeChapterTitle(inputStandard);
+    assert.equal(res2.suggestedTitle, 'Chapter 31 - Meja Sarapan');
+    assert.equal(res2.cleanedText, 'Isi bab dimulai di sini.');
+  });
 });
 
 console.log('\n=== Unit Tests Complete ===\n');

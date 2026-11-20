@@ -95,3 +95,44 @@ export function compareChapterNumbers(a: number | string | undefined, b: number 
   const validB = isNaN(numB) ? 0 : numB;
   return validA - validB;
 }
+
+/**
+ * Extracts generated chapter title from translated text and sanitizes any stray or hallucinated tags
+ * such as [JUDUL_BAB: ...], [JUDUL_NOVEL]...[/JUDUL_NOVEL], or BBCode/XML tags.
+ */
+export function extractAndSanitizeChapterTitle(rawText: string): { cleanedText: string; suggestedTitle?: string } {
+  let text = (rawText || '').trim();
+  let suggestedTitle: string | undefined;
+
+  // 1. Standard format: [JUDUL_BAB: ...] or [CHAPTER_TITLE: ...]
+  const standardMatch = text.match(/^\s*\[(?:JUDUL_BAB|CHAPTER_TITLE|TITLE):\s*([^\]\n]+)\]\s*\n?/i);
+  if (standardMatch) {
+    suggestedTitle = standardMatch[1].trim();
+    text = text.slice(standardMatch[0].length).trim();
+  }
+
+  // 2. BBCode format: [JUDUL_BAB]...[/JUDUL_BAB]
+  if (!suggestedTitle) {
+    const bbcodeMatch = text.match(/^\s*\[(?:JUDUL_BAB|CHAPTER_TITLE|TITLE)\]([\s\S]*?)\[\/(?:JUDUL_BAB|CHAPTER_TITLE|TITLE)\]\s*\n?/i);
+    if (bbcodeMatch) {
+      suggestedTitle = bbcodeMatch[1].trim();
+      text = text.slice(bbcodeMatch[0].length).trim();
+    }
+  }
+
+  // 3. Hallucinated format: [JUDUL_NOVEL]Novel Title[/JUDUL_NOVEL] - Chapter X / Title
+  if (!suggestedTitle) {
+    const novelTagMatch = text.match(/^\s*\[JUDUL_NOVEL\][\s\S]*?\[\/JUDUL_NOVEL\](?:\s*[-–—:]\s*([^\n]+))?\s*\n?/i);
+    if (novelTagMatch) {
+      if (novelTagMatch[1] && novelTagMatch[1].trim()) {
+        suggestedTitle = novelTagMatch[1].trim();
+      }
+      text = text.slice(novelTagMatch[0].length).trim();
+    }
+  }
+
+  // 4. Catch-all: strip any remaining stray meta tags at the start of the text
+  text = text.replace(/^\s*\[\/?(?:JUDUL_NOVEL|JUDUL_BAB|CHAPTER_TITLE|TITLE)[^\]]*\]\s*\n?/gi, '').trim();
+
+  return { cleanedText: text, suggestedTitle };
+}
