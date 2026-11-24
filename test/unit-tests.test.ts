@@ -446,6 +446,17 @@ describe('Server-Backed Persistent Storage & Config Stability', () => {
     assert.equal(res2.suggestedTitle, 'Chapter 31 - Meja Sarapan');
     assert.equal(res2.cleanedText, 'Isi bab dimulai di sini.');
   });
+
+  test('sanitizeTranslatedText and resolveChapterStatus should never mark placeholder or empty text as Selesai', () => {
+    const { sanitizeTranslatedText, resolveChapterStatus, UNTRANSLATED_PLACEHOLDER } = require('../src/services/chapterParser');
+    assert.equal(sanitizeTranslatedText(UNTRANSLATED_PLACEHOLDER), '');
+    assert.equal(sanitizeTranslatedText('   '), '');
+    assert.equal(sanitizeTranslatedText('Bab diterjemahkan dengan baik.'), 'Bab diterjemahkan dengan baik.');
+    assert.equal(resolveChapterStatus('Selesai', UNTRANSLATED_PLACEHOLDER), 'Belum');
+    assert.equal(resolveChapterStatus('Belum', UNTRANSLATED_PLACEHOLDER), 'Belum');
+    assert.equal(resolveChapterStatus('Belum', 'Translated text'), 'Selesai');
+    assert.equal(resolveChapterStatus('Sedang', 'Translated text'), 'Sedang');
+  });
 });
 
 console.log('\n=== Unit Tests Complete ===\n');

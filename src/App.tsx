@@ -13,6 +13,7 @@ import { translateChapterApi, extractGlossaryApi, authHeaders } from './services
 import { filterRelevantGlossaries, filterRelevantReferences } from './services/contextFilter';
 import { validateGlossaryCandidate, partitionGlossaryByQuality } from './services/glossaryFilter';
 import { exportNovelAsFolderZip } from './services/exportZip';
+import { sanitizeTranslatedText } from './services/chapterParser';
 import { useLibrary } from './hooks/useLibrary';
 import { useChapterEditor } from './hooks/useChapterEditor';
 import { Header } from './components/Header';
@@ -233,44 +234,56 @@ export default function App() {
   const saveChapterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper: Save chapter to local disk via server API (/api/save-chapter)
-  const saveChapterToDiskServer = (chap: Chapter, immediate: boolean = false) => {
-    if (!activeNovel) return;
+  const saveChapterToDiskServer = (chap: Chapter, immediate: boolean = false): Promise<boolean> => {
+    if (!activeNovel) return Promise.resolve(false);
     if (saveChapterTimeoutRef.current) {
       clearTimeout(saveChapterTimeoutRef.current);
       saveChapterTimeoutRef.current = null;
     }
 
-    const doSave = async () => {
+    const targetNovel = activeNovel;
+    const doSave = async (): Promise<boolean> => {
       try {
-        const folderPath = activeNovel.folder_path && !activeNovel.folder_path.startsWith('[')
-          ? activeNovel.folder_path
+        const folderPath = targetNovel.folder_path && !targetNovel.folder_path.startsWith('[')
+          ? targetNovel.folder_path
           : globalStoragePath;
 
-        await fetch('/api/save-chapter', {
+        const res = await fetch('/api/save-chapter', {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
+            novel_id: targetNovel.id,
+            chapter_id: chap.id,
             folder_path: folderPath,
             chapter_number: chap.nomor_chapter,
             chapter_title: chap.judul_chapter,
             original_text: chap.teks_asli,
             translated_text: chap.teks_terjemahan,
             status_pengerjaan: chap.status_pengerjaan,
-            novel_title: activeNovel.judul,
-            source_lang: activeNovel.bahasa_sumber,
-            target_lang: activeNovel.bahasa_target,
+            novel_title: targetNovel.judul,
+            source_lang: targetNovel.bahasa_sumber,
+            target_lang: targetNovel.bahasa_target,
           }),
         });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `HTTP ${res.status}`);
+        }
+        return true;
       } catch (err) {
         console.error('Error saving chapter file to disk via server:', err);
+        showToast('Peringatan: gagal menyimpan chapter ke disk server.');
+        return false;
       }
     };
 
     if (immediate) {
-      void doSave();
-    } else {
-      saveChapterTimeoutRef.current = setTimeout(doSave, 800);
+      return doSave();
     }
+    saveChapterTimeoutRef.current = setTimeout(() => {
+      void doSave();
+    }, 800);
+    return Promise.resolve(true);
   };
 
   // Handler: Select Chapter
@@ -461,46 +474,52 @@ export default function App() {
         },
       };
 
+      const targetNovelId = activeNovel.id;
+      const targetChapter = activeChapter;
       const result = await translateChapterApi(reqData);
-      const hasValidTranslation = Boolean(
-        result.translatedText &&
-        result.translatedText.trim().length > 0 &&
-        !result.translatedText.includes('*(Belum diterjemahkan)*')
-      );
+      const cleanedTranslation = sanitizeTranslatedText(result.translatedText);
+      const hasValidTranslation = cleanedTranslation.length > 0;
 
       if (hasValidTranslation) {
-        handleUpdateChapterText(activeChapter.teks_asli, result.translatedText);
-        if (
+        result.translatedText = cleanedTranslation;
+        chapterEditor.updateChapterText(targetChapter.id, targetChapter.teks_asli, cleanedTranslation, targetNovelId);
+        const shouldRename = Boolean(
           result.suggestedTitle &&
-          (activeChapter.judul_chapter === `Bab ${activeChapter.nomor_chapter}` ||
-            activeChapter.judul_chapter === `Chapter ${activeChapter.nomor_chapter}` ||
-            !activeChapter.judul_chapter.trim())
-        ) {
-          handleRenameChapter(activeChapter.id, result.suggestedTitle);
+          (targetChapter.judul_chapter === `Bab ${targetChapter.nomor_chapter}` ||
+            targetChapter.judul_chapter === `Chapter ${targetChapter.nomor_chapter}` ||
+            !targetChapter.judul_chapter.trim())
+        );
+        const nextTitle = shouldRename && result.suggestedTitle ? result.suggestedTitle : targetChapter.judul_chapter;
+        if (shouldRename && result.suggestedTitle) {
+          chapterEditor.renameChapter(targetChapter.id, result.suggestedTitle, targetNovelId);
         }
-        handleUpdateChapterStatus('Selesai');
+        chapterEditor.updateChapterStatus(targetChapter.id, 'Selesai', targetNovelId);
 
-        // Immediately persist the newly translated chapter to disk
-        const currentActive = chapterEditor.chapters.find((c) => c.id === activeChapter.id) || activeChapter;
-        saveChapterToDiskServer(
+        // Immediately persist the newly translated chapter to disk and verify write success
+        const savedOk = await saveChapterToDiskServer(
           {
-            ...currentActive,
-            teks_terjemahan: result.translatedText,
+            ...targetChapter,
+            judul_chapter: nextTitle,
+            teks_terjemahan: cleanedTranslation,
             status_pengerjaan: 'Selesai',
           },
           true
         );
 
+        if (!savedOk) {
+          return;
+        }
+
         // Auto-extract glossary after translation finishes if enabled (continuous async promise chain, no setTimeout)
         if (autoExtractGlossaryRef.current && result.translatedText) {
-          showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan! Mengekstrak glosarium otomatis...`);
+          showToast(`Chapter ${targetChapter.nomor_chapter} berhasil diterjemahkan! Mengekstrak glosarium otomatis...`);
           setIsTranslating(false);
           await handleExtractGlossary(result.translatedText);
         } else {
-          showToast(`Chapter ${activeChapter.nomor_chapter} berhasil diterjemahkan!`);
+          showToast(`Chapter ${targetChapter.nomor_chapter} berhasil diterjemahkan!`);
         }
       } else {
-        showToast('Translasi selesai tetapi tidak ada teks terjemahan yang valid dari AI.');
+        showToast('Translasi gagal: tidak ada teks terjemahan yang valid dari AI.');
       }
     } catch (err: any) {
       console.error(err);

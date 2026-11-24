@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import zlib from 'zlib';
 import { makeDataSection, PROMPT_INJECTION_GUARD, buildTranslateUserPrompt } from './src/services/promptBuilder';
-import { extractChapterNumber, formatChapterFilenameNumber, compareChapterNumbers, extractAndSanitizeChapterTitle } from './src/services/chapterParser';
+import { extractChapterNumber, formatChapterFilenameNumber, compareChapterNumbers, extractAndSanitizeChapterTitle, sanitizeTranslatedText, resolveChapterStatus, UNTRANSLATED_PLACEHOLDER } from './src/services/chapterParser';
 import { validateGlossaryCandidate } from './src/services/glossaryFilter';
 import { ExtractedTerm } from './src/types';
 // Zero-overhead environment loader (.env.local has precedence over .env)
@@ -317,8 +317,8 @@ async function startServer() {
   const TRAILING_COMMA_REGEX = /,\s*([\]}])/g;
   const CHAPTER_TITLE_REGEX = /^(?:#\s+)?(?:Chapter|Bab|Episode|Ep)\s*\d+(?:\.\d+)?[:\s\-]*(.+)$/im;
   const CHAPTER_STATUS_REGEX = />\s*\*\*Status:\*\*\s*(.+)$/m;
-  const CHAPTER_TRANS_REGEX = /## Hasil Terjemahan[^\n]*\n([\s\S]*?)(?:\n---|\n## Teks Asli|$)/;
-  const CHAPTER_ORIG_REGEX = /## Teks Asli[^\n]*\n([\s\S]*?)(?:\n---|$)/;
+  const CHAPTER_TRANS_REGEX = /## Hasil Terjemahan[^\n]*\n([\s\S]*?)(?:\n---(?:\r?\n|$)|\n## Teks Asli|$)/;
+  const CHAPTER_ORIG_REGEX = /## Teks Asli[^\n]*\n([\s\S]*?)(?:\n---(?:\r?\n|$)|$)/;
 
   // Sanitize nama file supaya aman untuk Windows (audit #6)
   function sanitizeFilename(name: string): string {
@@ -1071,13 +1071,8 @@ function ensurePromptTemplateFile(): void {
               originalText = content;
             }
 
-            if (!translatedText && content.includes('*(Belum diterjemahkan)*')) {
-              translatedText = '';
-            }
-
-            if (translatedText.length > 0 && statusPengerjaan === 'Belum') {
-              statusPengerjaan = 'Selesai';
-            }
+            translatedText = sanitizeTranslatedText(translatedText);
+            statusPengerjaan = resolveChapterStatus(statusPengerjaan, translatedText);
 
             chapters.push({
               id: `chap-${novelId}-${nomorChapter}`,
@@ -1762,8 +1757,11 @@ function ensurePromptTemplateFile(): void {
                 hasChanges = true;
                 const divider = '---';
                 const resolvedAsli = chap.teks_asli || prevChap?.teks_asli || '';
-                const resolvedTrans = chap.teks_terjemahan || prevChap?.teks_terjemahan || '';
-                const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${chap.status_pengerjaan}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${resolvedTrans || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${resolvedAsli || '*(Kosong)*'}\n`;
+                const resolvedTrans = sanitizeTranslatedText(chap.teks_terjemahan) || sanitizeTranslatedText(prevChap?.teks_terjemahan) || '';
+                const resolvedStatus = resolveChapterStatus(chap.status_pengerjaan, resolvedTrans);
+                chap.teks_terjemahan = resolvedTrans;
+                chap.status_pengerjaan = resolvedStatus;
+                const mdContent = `# Chapter ${validNum}: ${safeChapTitle}\n\n> **Novel:** ${safeNovelJudul}\n> **Status:** ${resolvedStatus}\n> **Bahasa:** ${novel.bahasa_sumber} -> ${novel.bahasa_target}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${novel.bahasa_target})\n\n${resolvedTrans || UNTRANSLATED_PLACEHOLDER}\n\n${divider}\n\n## Teks Asli (${novel.bahasa_sumber})\n\n${resolvedAsli || '*(Kosong)*'}\n`;
                 asyncWritePromises.push(fs.promises.writeFile(chapPath, mdContent, 'utf-8'));
               }
             }
@@ -2067,13 +2065,8 @@ function ensurePromptTemplateFile(): void {
         originalText = content;
       }
 
-      if (!translatedText && content.includes('*(Belum diterjemahkan)*')) {
-        translatedText = '';
-      }
-
-      if (translatedText.length > 0 && statusPengerjaan === 'Belum') {
-        statusPengerjaan = 'Selesai';
-      }
+      translatedText = sanitizeTranslatedText(translatedText);
+      statusPengerjaan = resolveChapterStatus(statusPengerjaan, translatedText);
 
       const chapter = {
         id: `chap-${novelId}-${targetNum}`,
@@ -2234,12 +2227,21 @@ function ensurePromptTemplateFile(): void {
   // API Route: Save Chapter to Physical Folder
   app.post('/api/save-chapter', rateLimit(60, 60000), (req, res) => {
     try {
-      const { folder_path, chapter_number, chapter_title, original_text, translated_text, novel_title, source_lang, target_lang } = req.body;
+      const { novel_id, chapter_id, folder_path, chapter_number, chapter_title, original_text, translated_text, status_pengerjaan, novel_title, source_lang, target_lang } = req.body;
       const libraryBase = getLibraryStorageDir();
       const cleanNovelTitle = sanitizeFilename(novel_title || 'Novel');
-      let targetFolder = path.join(libraryBase, cleanNovelTitle);
+      const knownLibrary = cachedLibraryData || readLibraryStorage();
+      const matchedNovel = knownLibrary.novels.find((n) =>
+        (novel_id && n.id === novel_id) ||
+        (novel_title && n.judul === novel_title) ||
+        (folder_path && n.folder_path && path.basename(n.folder_path) === path.basename(String(folder_path)))
+      );
 
-      if (folder_path && typeof folder_path === 'string' && !folder_path.startsWith('[')) {
+      let targetFolder = matchedNovel
+        ? resolveNovelFolderOnDisk(libraryBase, matchedNovel)
+        : path.join(libraryBase, cleanNovelTitle);
+
+      if (!matchedNovel && folder_path && typeof folder_path === 'string' && !folder_path.startsWith('[')) {
         const safe = resolveSafePath(folder_path, libraryBase);
         if (safe) {
           targetFolder = safe;
@@ -2257,19 +2259,18 @@ function ensurePromptTemplateFile(): void {
       const fileName = `Chapter_${padNum}.md`;
       const filePath = path.join(targetFolder, fileName);
 
+      const cleanTranslated = sanitizeTranslatedText(translated_text);
+      const resolvedStatus = resolveChapterStatus(status_pengerjaan, cleanTranslated);
+
       const divider = '---';
-      const mdContent = `# Chapter ${validNum}: ${safeTitle}\n\n> **Novel:** ${sanitizeFilename(novel_title || 'Novel')}\n> **Bahasa:** ${source_lang || 'Asli'} -> ${target_lang || 'Target'}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${target_lang || 'Target'})\n\n${translated_text || '*(Belum diterjemahkan)*'}\n\n${divider}\n\n## Teks Asli (${source_lang || 'Asli'})\n\n${original_text || '*(Kosong)*'}\n`;
+      const mdContent = `# Chapter ${validNum}: ${safeTitle}\n\n> **Novel:** ${sanitizeFilename(novel_title || 'Novel')}\n> **Status:** ${resolvedStatus}\n> **Bahasa:** ${source_lang || 'Asli'} -> ${target_lang || 'Target'}\n> **Updated:** ${new Date().toLocaleString()}\n\n${divider}\n\n## Hasil Terjemahan (${target_lang || 'Target'})\n\n${cleanTranslated || UNTRANSLATED_PLACEHOLDER}\n\n${divider}\n\n## Teks Asli (${source_lang || 'Asli'})\n\n${original_text || '*(Kosong)*'}\n`;
 
       fs.writeFileSync(filePath, mdContent, 'utf-8');
-      
+
       // Update in-memory cache directly to avoid expensive 15-28s re-scan on subsequent reads
       if (cachedLibraryData) {
-        const matchedNovel = cachedLibraryData.novels.find((n) =>
-          (n.folder_path && path.resolve(n.folder_path) === path.resolve(targetFolder)) ||
-          (novel_title && n.judul === novel_title)
-        );
-        const novelId = matchedNovel?.id || 'novel-generic';
-        const chapId = `chap-${novelId}-${validNum}`;
+        const novelId = matchedNovel?.id || novel_id || 'novel-generic';
+        const chapId = chapter_id || `chap-${novelId}-${validNum}`;
         const existingIdx = cachedLibraryData.chapters.findIndex((c) =>
           (c.novel_id === novelId && c.nomor_chapter === validNum) || c.id === chapId
         );
@@ -2279,8 +2280,8 @@ function ensurePromptTemplateFile(): void {
           nomor_chapter: validNum,
           judul_chapter: safeTitle,
           teks_asli: original_text || '',
-          teks_terjemahan: translated_text || '',
-          status_pengerjaan: (translated_text && translated_text.trim().length > 0) ? 'Selesai' : 'Belum',
+          teks_terjemahan: cleanTranslated,
+          status_pengerjaan: resolvedStatus,
           createdAt: existingIdx >= 0 ? cachedLibraryData.chapters[existingIdx].createdAt : new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -2564,7 +2565,10 @@ function ensurePromptTemplateFile(): void {
       }
       // Extract generated chapter title and sanitize any stray/hallucinated tags
       const { cleanedText, suggestedTitle } = extractAndSanitizeChapterTitle(translatedText);
-      translatedText = cleanedText;
+      translatedText = sanitizeTranslatedText(cleanedText);
+      if (!translatedText) {
+        return res.status(502).json({ error: 'Model AI mengembalikan hasil terjemahan kosong. Silakan coba lagi.' });
+      }
 
       return res.json({
         translatedText,

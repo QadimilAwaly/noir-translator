@@ -136,3 +136,24 @@ export function extractAndSanitizeChapterTitle(rawText: string): { cleanedText: 
 
   return { cleanedText: text, suggestedTitle };
 }
+
+export const UNTRANSLATED_PLACEHOLDER = '*(Belum diterjemahkan)*';
+
+export function sanitizeTranslatedText(raw: string | undefined | null): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed || trimmed === UNTRANSLATED_PLACEHOLDER) {
+    return '';
+  }
+  return trimmed;
+}
+
+export function resolveChapterStatus(
+  currentStatus: string | undefined,
+  translatedText: string | undefined | null
+): 'Belum' | 'Sedang' | 'Selesai' {
+  const clean = sanitizeTranslatedText(translatedText);
+  if (clean.length > 0) {
+    return currentStatus === 'Sedang' ? 'Sedang' : 'Selesai';
+  }
+  return currentStatus === 'Sedang' ? 'Sedang' : 'Belum';
+}

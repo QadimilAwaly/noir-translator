@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { Chapter, ReferenceItem, GlossaryItem, ChapterStatus, GenderTag } from '../types';
 import {
   getStoredChapters,
@@ -62,6 +62,8 @@ export interface UseChapterEditorReturn {
 
 export function useChapterEditor(): UseChapterEditorReturn {
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const chaptersRef = useRef<Chapter[]>([]);
+  chaptersRef.current = chapters;
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
   const [references, setReferences] = useState<ReferenceItem[]>([]);
   const [glossaries, setGlossaries] = useState<GlossaryItem[]>([]);
@@ -115,7 +117,16 @@ export function useChapterEditor(): UseChapterEditorReturn {
             .filter((c) => c.novel_id === novelId)
             .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
           if (fullChaps.length > 0 && fullChaps.some((c) => c.teks_asli || c.teks_terjemahan)) {
-            setChapters(fullChaps);
+            setChapters((prev) => {
+              const prevMap = new Map(prev.map((c) => [c.id, c]));
+              return fullChaps.map((fc) => {
+                const local = prevMap.get(fc.id);
+                if (local && local.teks_terjemahan && !fc.teks_terjemahan) {
+                  return local;
+                }
+                return fc;
+              });
+            });
           }
         }
       }).catch((e) => console.warn('Failed loading full chapter text for novel:', e));
@@ -143,15 +154,8 @@ export function useChapterEditor(): UseChapterEditorReturn {
   }, []);
 
   const loadChapterContent = useCallback(async (chapterId: string, novelId: string) => {
-    let alreadyHasText = false;
-    setChapters((prev) => {
-      const found = prev.find((c) => c.id === chapterId);
-      if (found && (found.teks_asli || found.teks_terjemahan)) {
-        alreadyHasText = true;
-      }
-      return prev;
-    });
-    if (alreadyHasText) return;
+    const existing = chaptersRef.current.find((c) => c.id === chapterId);
+    if (existing && (existing.teks_asli || existing.teks_terjemahan)) return;
 
     setIsChapterLoading(true);
     try {
@@ -180,17 +184,84 @@ export function useChapterEditor(): UseChapterEditorReturn {
       setIsChapterLoading(false);
     }
   }, []);
-  const updateChapterText = useCallback((chapterId: string, original: string, translated: string, novelId?: string) => {
+  const updateChapterText = useCallback((chapterId: string, original: string, translated: string, _novelId?: string) => {
+    const now = new Date().toISOString();
+    const allChapters = getStoredChapters();
     let updatedChapter: Chapter | undefined;
-    setChapters((prev) => {
+    const updatedAll = allChapters.map((c) => {
+      if (c.id === chapterId) {
+        updatedChapter = {
+          ...c,
+          teks_asli: original,
+          teks_terjemahan: translated,
+          updatedAt: now,
+        };
+        return updatedChapter;
+      }
+      return c;
+    });
+
+    if (!updatedChapter) {
+      const currentChapter = chaptersRef.current.find((c) => c.id === chapterId);
+      if (currentChapter) {
+        updatedChapter = {
+          ...currentChapter,
+          teks_asli: original,
+          teks_terjemahan: translated,
+          updatedAt: now,
+        };
+        updatedAll.push(updatedChapter);
+      }
+    }
+
+    saveStoredChapters(updatedAll);
+    setChapters((prev) =>
+      prev.map((c) => (c.id === chapterId ? { ...c, teks_asli: original, teks_terjemahan: translated, updatedAt: now } : c))
+    );
+    setIsDirty(true);
+    return updatedChapter;
+  }, []);
+
+  const updateChapterStatus = useCallback((chapterId: string, status: ChapterStatus, _novelId?: string) => {
+    const now = new Date().toISOString();
+    const currentChapter = chaptersRef.current.find((c) => c.id === chapterId);
+    const allChapters = getStoredChapters();
+    const updatedAll = allChapters.map((c) => {
+      if (c.id === chapterId) {
+        return {
+          ...c,
+          teks_asli: c.teks_asli || currentChapter?.teks_asli || '',
+          teks_terjemahan: c.teks_terjemahan || currentChapter?.teks_terjemahan || '',
+          status_pengerjaan: status,
+          updatedAt: now,
+        };
+      }
+      return c;
+    });
+
+    saveStoredChapters(updatedAll);
+    setChapters((prev) => prev.map((c) => (c.id === chapterId ? { ...c, status_pengerjaan: status, updatedAt: now } : c)));
+  }, []);
+
+  const updateChapterMeta = useCallback(
+    (
+      chapterId: string,
+      patch: { nomor_chapter?: number; judul_chapter?: string },
+      _novelId?: string
+    ): Chapter | undefined => {
+      const now = new Date().toISOString();
+      const currentChapter = chaptersRef.current.find((c) => c.id === chapterId);
       const allChapters = getStoredChapters();
+      let updatedChapter: Chapter | undefined;
       const updatedAll = allChapters.map((c) => {
         if (c.id === chapterId) {
           updatedChapter = {
             ...c,
-            teks_asli: original,
-            teks_terjemahan: translated,
-            updatedAt: new Date().toISOString(),
+            nomor_chapter: patch.nomor_chapter !== undefined ? patch.nomor_chapter : c.nomor_chapter,
+            judul_chapter: patch.judul_chapter !== undefined ? patch.judul_chapter.trim() : c.judul_chapter,
+            teks_asli: c.teks_asli || currentChapter?.teks_asli || '',
+            teks_terjemahan: c.teks_terjemahan || currentChapter?.teks_terjemahan || '',
+            updatedAt: now,
           };
           return updatedChapter;
         }
@@ -198,76 +269,21 @@ export function useChapterEditor(): UseChapterEditorReturn {
       });
 
       saveStoredChapters(updatedAll);
-      return prev.map((c) =>
-        c.id === chapterId ? { ...c, teks_asli: original, teks_terjemahan: translated, updatedAt: new Date().toISOString() } : c
-      );
-    });
-    setIsDirty(true);
-    return updatedChapter;
-  }, []);
-
-  const updateChapterStatus = useCallback((chapterId: string, status: ChapterStatus, novelId?: string) => {
-    setChapters((prev) => {
-      const currentChapter = prev.find((c) => c.id === chapterId);
-      const allChapters = getStoredChapters();
-      const updatedAll = allChapters.map((c) => {
-        if (c.id === chapterId) {
-          return {
-            ...c,
-            teks_asli: currentChapter?.teks_asli || c.teks_asli,
-            teks_terjemahan: currentChapter?.teks_terjemahan || c.teks_terjemahan,
-            status_pengerjaan: status,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return c;
-      });
-
-      saveStoredChapters(updatedAll);
-      return prev.map((c) => (c.id === chapterId ? { ...c, status_pengerjaan: status, updatedAt: new Date().toISOString() } : c));
-    });
-  }, []);
-
-  const updateChapterMeta = useCallback(
-    (
-      chapterId: string,
-      patch: { nomor_chapter?: number; judul_chapter?: string },
-      novelId?: string
-    ): Chapter | undefined => {
-      let updatedChapter: Chapter | undefined;
-      setChapters((prev) => {
-        const currentChapter = prev.find((c) => c.id === chapterId);
-        const allChapters = getStoredChapters();
-        const updatedAll = allChapters.map((c) => {
-          if (c.id === chapterId) {
-            updatedChapter = {
-              ...c,
-              nomor_chapter: patch.nomor_chapter !== undefined ? patch.nomor_chapter : c.nomor_chapter,
-              judul_chapter: patch.judul_chapter !== undefined ? patch.judul_chapter.trim() : c.judul_chapter,
-              teks_asli: currentChapter?.teks_asli || c.teks_asli,
-              teks_terjemahan: currentChapter?.teks_terjemahan || c.teks_terjemahan,
-              updatedAt: new Date().toISOString(),
-            };
-            return updatedChapter;
-          }
-          return c;
-        });
-
-        saveStoredChapters(updatedAll);
-        return prev
+      setChapters((prev) =>
+        prev
           .map((c) => {
             if (c.id === chapterId) {
               return {
                 ...c,
                 nomor_chapter: patch.nomor_chapter !== undefined ? patch.nomor_chapter : c.nomor_chapter,
                 judul_chapter: patch.judul_chapter !== undefined ? patch.judul_chapter.trim() : c.judul_chapter,
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
               };
             }
             return c;
           })
-          .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter));
-      });
+          .sort((a, b) => compareChapterNumbers(a.nomor_chapter, b.nomor_chapter))
+      );
       return updatedChapter;
     },
     []

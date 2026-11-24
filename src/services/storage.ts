@@ -380,6 +380,15 @@ export function syncServerStorage(customData?: Partial<LibraryStorageData>, part
         if (json?.data?.last_updated) {
           inMemoryLibrary.last_updated = json.data.last_updated;
         }
+        if (Array.isArray(json?.data?.novels)) {
+          const serverFolderMap = new Map<string, string>(
+            json.data.novels.map((n: Novel) => [n.id, n.folder_path])
+          );
+          inMemoryLibrary.novels = inMemoryLibrary.novels.map((n) => {
+            const sf = serverFolderMap.get(n.id);
+            return sf && sf !== n.folder_path ? { ...n, folder_path: sf } : n;
+          });
+        }
       }
     } catch (err) {
       console.warn('Failed syncing library to server storage:', err);
